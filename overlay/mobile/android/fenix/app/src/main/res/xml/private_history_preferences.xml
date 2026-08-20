@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <androidx.preference.SwitchPreferenceCompat
+        android:key="private_history_enabled"
+        android:defaultValue="true"
+        android:title="@string/private_history_enabled_title"
+        android:summary="@string/private_history_enabled_summary"
+        app:iconSpaceReserved="false" />
+
+    <androidx.preference.PreferenceCategory
+        android:title="@string/private_history_rules_category"
+        android:layout="@layout/preference_category_no_icon_style">
+
+        <androidx.preference.EditTextPreference
+            android:key="private_history_domains"
+            android:title="@string/private_history_domains_title"
+            android:dialogTitle="@string/private_history_domains_dialog"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.EditTextPreference
+            android:key="private_history_keywords"
+            android:title="@string/private_history_keywords_title"
+            android:dialogTitle="@string/private_history_keywords_dialog"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.EditTextPreference
+            android:key="private_history_regex"
+            android:title="@string/private_history_regex_title"
+            android:dialogTitle="@string/private_history_regex_dialog"
+            app:iconSpaceReserved="false" />
+    </androidx.preference.PreferenceCategory>
+
+    <androidx.preference.PreferenceCategory
+        android:title="@string/private_history_matching_category"
+        android:layout="@layout/preference_category_no_icon_style">
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:key="private_history_match_url"
+            android:defaultValue="true"
+            android:title="@string/private_history_match_url_title"
+            android:summary="@string/private_history_match_url_summary"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:key="private_history_decode_url"
+            android:defaultValue="true"
+            android:title="@string/private_history_decode_url_title"
+            android:summary="@string/private_history_decode_url_summary"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:key="private_history_match_title"
+            android:defaultValue="true"
+            android:title="@string/private_history_match_title_title"
+            android:summary="@string/private_history_match_title_summary"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:key="private_history_case_sensitive"
+            android:defaultValue="false"
+            android:title="@string/private_history_case_sensitive_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:key="private_history_whole_words"
+            android:defaultValue="false"
+            android:title="@string/private_history_whole_words_title"
+            android:summary="@string/private_history_whole_words_summary"
+            app:iconSpaceReserved="false" />
+    </androidx.preference.PreferenceCategory>
+
+    <androidx.preference.PreferenceCategory
+        android:title="@string/private_history_cleanup_category"
+        android:layout="@layout/preference_category_no_icon_style">
+
+        <androidx.preference.Preference
+            android:key="private_history_cleanup"
+            android:title="@string/private_history_cleanup_title"
+            android:summary="@string/private_history_cleanup_summary"
+            app:iconSpaceReserved="false" />
+    </androidx.preference.PreferenceCategory>
+
+    <androidx.preference.PreferenceCategory
+        android:title="@string/private_history_updates_category"
+        android:layout="@layout/preference_category_no_icon_style">
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:key="fenix_privacy_auto_update"
+            android:defaultValue="true"
+            android:title="@string/fenix_privacy_auto_update_title"
+            android:summary="@string/fenix_privacy_auto_update_summary"
+            app:iconSpaceReserved="false" />
+    </androidx.preference.PreferenceCategory>
+</androidx.preference.PreferenceScreen>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="private_history_title">Regole cronologia privata</string>
+    <string name="private_history_settings_summary">Non salvare mai nella cronologia determinati siti o parole</string>
+    <string name="private_history_enabled_title">Abilita regole cronologia privata</string>
+    <string name="private_history_enabled_summary">Quando la corrispondenza è già riconoscibile dall’URL, la visita viene bloccata prima della scrittura.</string>
+    <string name="private_history_rules_category">Blacklist</string>
+    <string name="private_history_domains_title">Domini bloccati</string>
+    <string name="private_history_domains_dialog">Un dominio per riga</string>
+    <string name="private_history_keywords_title">Parole o frasi bloccate</string>
+    <string name="private_history_keywords_dialog">Una parola o frase per riga</string>
+    <string name="private_history_regex_title">Espressioni regolari</string>
+    <string name="private_history_regex_dialog">Una regex per riga</string>
+    <string name="private_history_none_domains">Nessun dominio bloccato</string>
+    <string name="private_history_none_keywords">Nessuna parola bloccata</string>
+    <string name="private_history_none_regex">Nessuna espressione regolare</string>
+    <plurals name="private_history_rules_count">
+        <item quantity="one">%d regola</item>
+        <item quantity="other">%d regole</item>
+    </plurals>
+    <string name="private_history_matching_category">Corrispondenza</string>
+    <string name="private_history_match_url_title">Controlla URL e query di ricerca</string>
+    <string name="private_history_match_url_summary">Le parole vengono controllate nell’URL di navigazione, compresi i parametri delle ricerche.</string>
+    <string name="private_history_decode_url_title">Decodifica URL prima del controllo</string>
+    <string name="private_history_decode_url_summary">Riconosce anche ricerche codificate come q=mia%20parola.</string>
+    <string name="private_history_match_title_title">Controlla i titoli delle pagine</string>
+    <string name="private_history_match_title_summary">Se una parola bloccata compare solo nel titolo, l’eventuale visita già scritta per quell’URL viene rimossa.</string>
+    <string name="private_history_case_sensitive_title">Distingui maiuscole e minuscole</string>
+    <string name="private_history_whole_words_title">Solo parole intere</string>
+    <string name="private_history_whole_words_summary">Per le singole parole richiede i confini di parola invece della semplice sottostringa.</string>
+    <string name="private_history_cleanup_category">Pulizia</string>
+    <string name="private_history_cleanup_title">Pulisci ora la cronologia corrispondente</string>
+    <string name="private_history_cleanup_summary">Scansiona la cronologia locale ed elimina URL e titoli che corrispondono alle regole attuali.</string>
+    <string name="private_history_cleanup_running">Scansione e cancellazione in corso…</string>
+    <plurals name="private_history_cleanup_result">
+        <item quantity="one">Rimosso %d record corrispondente</item>
+        <item quantity="other">Rimossi %d record corrispondenti</item>
+    </plurals>
+    <string name="private_history_updates_category">Aggiornamenti</string>
+    <string name="fenix_privacy_auto_update_title">Controllo automatico aggiornamenti</string>
+    <string name="fenix_privacy_auto_update_summary">Controlla in background le release del progetto e scarica un APK firmato più recente quando disponibile. Android richiederà comunque la conferma per installarlo.</string>
+    <string name="fenix_privacy_update_channel">Aggiornamenti Fenix Privacy</string>
+    <string name="fenix_privacy_update_download_title">Download di Fenix Privacy %1$s</string>
+    <string name="fenix_privacy_update_download_summary">Aggiornamento firmato verificato dal feed release del progetto</string>
+    <string name="fenix_privacy_update_ready">Fenix Privacy %1$s è pronto</string>
+    <string name="fenix_privacy_update_ready_summary">Tocca per confermare l’installazione con Android.</string>
+</resources>

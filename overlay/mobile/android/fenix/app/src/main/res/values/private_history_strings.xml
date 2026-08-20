@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pref_key_private_history_rules" translatable="false">private_history_rules</string>
+    <string name="private_history_title">Private history rules</string>
+    <string name="private_history_settings_summary">Never save selected sites or words to browsing history</string>
+    <string name="private_history_enabled_title">Enable private history rules</string>
+    <string name="private_history_enabled_summary">Matching navigations are suppressed before they are written whenever the URL already reveals the match.</string>
+    <string name="private_history_rules_category">Blacklists</string>
+    <string name="private_history_domains_title">Blocked domains</string>
+    <string name="private_history_domains_dialog">One domain per line</string>
+    <string name="private_history_keywords_title">Blocked words or phrases</string>
+    <string name="private_history_keywords_dialog">One word or phrase per line</string>
+    <string name="private_history_regex_title">Regular expressions</string>
+    <string name="private_history_regex_dialog">One regex per line</string>
+    <string name="private_history_none_domains">No blocked domains</string>
+    <string name="private_history_none_keywords">No blocked words</string>
+    <string name="private_history_none_regex">No regular expressions</string>
+    <plurals name="private_history_rules_count">
+        <item quantity="one">%d rule</item>
+        <item quantity="other">%d rules</item>
+    </plurals>
+    <string name="private_history_matching_category">Matching</string>
+    <string name="private_history_match_url_title">Match URL and search query</string>
+    <string name="private_history_match_url_summary">Keywords are checked against the navigation URL, including search query parameters.</string>
+    <string name="private_history_decode_url_title">Decode URL before matching</string>
+    <string name="private_history_decode_url_summary">Matches encoded searches such as q=my%20keyword.</string>
+    <string name="private_history_match_title_title">Match page titles</string>
+    <string name="private_history_match_title_summary">If a blocked word only becomes visible in the title, any visit already written for that URL is removed.</string>
+    <string name="private_history_case_sensitive_title">Case-sensitive matching</string>
+    <string name="private_history_whole_words_title">Whole words only</string>
+    <string name="private_history_whole_words_summary">For single-word blacklist entries, require word boundaries instead of substring matching.</string>
+    <string name="private_history_cleanup_category">Cleanup</string>
+    <string name="private_history_cleanup_title">Clean existing matching history now</string>
+    <string name="private_history_cleanup_summary">Scan local history and delete every URL or title matching the current rules.</string>
+    <string name="private_history_cleanup_running">Scanning and deleting matching history…</string>
+    <plurals name="private_history_cleanup_result">
+        <item quantity="one">Removed %d matching record</item>
+        <item quantity="other">Removed %d matching records</item>
+    </plurals>
+    <string name="private_history_updates_category">Updates</string>
+    <string name="fenix_privacy_auto_update_title">Automatic update checks</string>
+    <string name="fenix_privacy_auto_update_summary">Check the project release feed in the background and download a newer signed APK when available. Android will still ask you to confirm installation.</string>
+    <string name="fenix_privacy_update_channel">Fenix Privacy updates</string>
+    <string name="fenix_privacy_update_download_title">Downloading Fenix Privacy %1$s</string>
+    <string name="fenix_privacy_update_download_summary">Verified signed update from the project release feed</string>
+    <string name="fenix_privacy_update_ready">Fenix Privacy %1$s is ready</string>
+    <string name="fenix_privacy_update_ready_summary">Tap to confirm installation with Android.</string>
+</resources>
