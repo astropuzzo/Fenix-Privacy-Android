@@ -261,7 +261,7 @@ jobs:
             --max-workers=1
             -Pkotlin.compiler.execution.strategy=in-process
             -Dorg.gradle.vfs.watch=false
-            "-Dorg.gradle.jvmargs=-Xmx3g -Xms512m -XX:MaxMetaspaceSize=768m -XX:+HeapDumpOnOutOfMemoryError -XX:+UseParallelGC"
+            "-Dorg.gradle.jvmargs=-Xmx4608m -Xms1g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -XX:+UseParallelGC"
         shell: bash
         run: |
           set -euo pipefail
