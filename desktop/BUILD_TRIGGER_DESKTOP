@@ -1,0 +1,3 @@
+2026-08-20T11:10:00+02:00
+Manual release build trigger for Firefox Desktop XPI and Windows EXE.
+Update this file to force a fresh main-branch desktop build without changing source code.
