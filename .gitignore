@@ -1,0 +1,13 @@
+
+*.aab
+*.apk
+*.jks
+*.keystore
+*.pyc
+*.zip
+.env
+.pytest_cache/
+__pycache__/
+signing/private/
+upstream/
+work/
