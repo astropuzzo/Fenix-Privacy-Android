@@ -103,6 +103,7 @@ jobs:
           }
 
       - name: Fetch upstream Firefox
+        id: firefox
         if: steps.decision.outputs.build == 'true'
         shell: bash
         run: |
@@ -113,6 +114,7 @@ jobs:
             "refs/tags/${{ steps.upstream.outputs.ref }}:refs/tags/${{ steps.upstream.outputs.ref }}"
           git -C upstream checkout --detach "${{ steps.upstream.outputs.ref }}"
           REV="$(git -C upstream rev-parse HEAD)"
+          echo "revision=$REV" >> "$GITHUB_OUTPUT"
           echo "FENIX_PRIVACY_UPSTREAM_REVISION=$REV" >> "$GITHUB_ENV"
           echo "FENIX_PRIVACY_UPSTREAM_REF=${{ steps.upstream.outputs.ref }}" >> "$GITHUB_ENV"
 
@@ -191,6 +193,17 @@ jobs:
           echo 'Disk after cleanup:'
           df -h /
 
+      - name: Restore Gradle dependency cache
+        if: steps.decision.outputs.build == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ steps.firefox.outputs.revision }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
       - name: Bootstrap Firefox Android artifact build
         if: steps.decision.outputs.build == 'true'
         working-directory: upstream
@@ -224,7 +237,40 @@ jobs:
         working-directory: upstream
         env:
           MOZCONFIG: mozconfig
-        run: ./mach gradle fenix:assembleRelease -PdisableDebugSigning
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          max_attempts=4
+          for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+            log="$RUNNER_TEMP/fenix-gradle-attempt-$attempt.log"
+            echo "::group::Fenix Gradle build attempt $attempt of $max_attempts"
+
+            set +e
+            ./mach gradle fenix:assembleRelease -PdisableDebugSigning 2>&1 | tee "$log"
+            status=${PIPESTATUS[0]}
+            set -e
+
+            echo "::endgroup::"
+            if ((status == 0)); then
+              exit 0
+            fi
+
+            if ! grep -qi 'maven\.mozilla\.org' "$log" || \
+               ! grep -Eqi 'status code 5[0-9]{2}|service unavailable|could not (get|head)|connection (reset|refused)|timed? out|temporary failure|remote host terminated' "$log"; then
+              echo "Gradle failed for a non-transient reason; not retrying." >&2
+              exit "$status"
+            fi
+
+            if ((attempt == max_attempts)); then
+              echo "Mozilla Maven remained unavailable after $max_attempts attempts." >&2
+              exit "$status"
+            fi
+
+            delay=$((30 * (1 << (attempt - 1))))
+            echo "Transient Mozilla Maven failure detected; retrying in ${delay}s."
+            sleep "$delay"
+          done
 
       - name: Show produced APKs
         if: steps.decision.outputs.build == 'true'
