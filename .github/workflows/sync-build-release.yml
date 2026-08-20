@@ -17,6 +17,13 @@ on:
       - 'desktop-updates.json'
       - '.github/workflows/desktop-extension.yml'
       - '**/*.md'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android_overlay/**'
+      - 'scripts/**'
+      - '.github/workflows/sync-build-release.yml'
+      - 'SIGNING_CERT_SHA256'
   schedule:
     - cron: '23 4 * * *'
 
@@ -24,7 +31,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: fenix-privacy-android
+  group: fenix-privacy-android-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -64,7 +71,7 @@ jobs:
           set -euo pipefail
           FORCE=false
 
-          if [[ "$EVENT_NAME" == "push" ]]; then
+          if [[ "$EVENT_NAME" == "push" || "$EVENT_NAME" == "pull_request" ]]; then
             FORCE=true
           fi
 
@@ -81,7 +88,7 @@ jobs:
           fi
 
       - name: Validate Android signing secrets
-        if: steps.decision.outputs.build == 'true'
+        if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -113,6 +120,37 @@ jobs:
         if: steps.decision.outputs.build == 'true'
         run: python3 scripts/apply_fenix_privacy.py upstream
 
+      - name: Remove emulator-only payload from Mozilla bootstrap
+        if: steps.decision.outputs.build == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("upstream/python/mozboot/mozboot/linux_common.py")
+          text = path.read_text(encoding="utf-8")
+
+          avd_manifest = "            avd_manifest_path=android.AVD_MANIFEST_X86_64,\n"
+          avd_toolchain = "        self.install_toolchain_artifact(android.X86_64_ANDROID_AVD)\n"
+
+          if text.count(avd_manifest) != 1:
+              raise SystemExit("Mozilla Android bootstrap AVD manifest anchor changed")
+          if text.count(avd_toolchain) != 1:
+              raise SystemExit("Mozilla Android bootstrap AVD toolchain anchor changed")
+
+          text = text.replace(avd_manifest, "            avd_manifest_path=None,\n", 1)
+          text = text.replace(
+              avd_toolchain,
+              "        # CI APK build: emulator/AVD payload intentionally omitted.\n",
+              1,
+          )
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          grep -n -A8 -B4 'ensure_mobile_android_packages\|avd_manifest_path' \
+            upstream/python/mozboot/mozboot/linux_common.py
+
       - name: Prepare version
         if: steps.decision.outputs.build == 'true'
         shell: bash
@@ -138,18 +176,55 @@ jobs:
           echo "FENIX_PRIVACY_VERSION_NAME=$NAME" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=v$NAME" >> "$GITHUB_ENV"
 
+      - name: Show runner disk before bootstrap
+        if: steps.decision.outputs.build == 'true'
+        shell: bash
+        run: df -h /
+
       - name: Bootstrap Firefox Android artifact build
         if: steps.decision.outputs.build == 'true'
         working-directory: upstream
         run: ./mach --no-interactive bootstrap --application-choice="GeckoView/Firefox for Android Artifact Mode"
+
+      - name: Verify AVD was not installed
+        if: steps.decision.outputs.build == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find "$MOZBUILD_STATE_PATH" -maxdepth 3 -iname '*android-avd*' -o -iname '*android-device*' | grep -q .; then
+            echo "Unexpected Android emulator/AVD payload found:" >&2
+            find "$MOZBUILD_STATE_PATH" -maxdepth 3 \( -iname '*android-avd*' -o -iname '*android-device*' \) -print >&2
+            exit 1
+          fi
+          df -h /
 
       - name: Build unsigned universal release APK
         if: steps.decision.outputs.build == 'true'
         working-directory: upstream
         run: ./mach gradle fenix:assembleRelease -PdisableDebugSigning
 
-      - name: Sign and verify APK
+      - name: Show produced APKs
         if: steps.decision.outputs.build == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          find upstream -type f -name '*.apk' -print
+          test -n "$(find upstream -type f -name '*.apk' -print -quit)" || {
+            echo "No APK was produced by fenix:assembleRelease" >&2
+            exit 1
+          }
+
+      - name: Upload PR smoke-test APKs
+        if: steps.decision.outputs.build == 'true' && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fenix-Privacy-Android-PR-smoke-${{ github.event.pull_request.number }}
+          retention-days: 7
+          if-no-files-found: error
+          path: upstream/**/outputs/apk/release/*.apk
+
+      - name: Sign and verify APK
+        if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
         shell: bash
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -208,7 +283,7 @@ jobs:
           rm -f /tmp/fenix-privacy-release.jks /tmp/Fenix-Privacy-aligned.apk
 
       - name: Create update manifest
-        if: steps.decision.outputs.build == 'true'
+        if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -217,7 +292,7 @@ jobs:
           cat update.json
 
       - name: Upload Android build artifact
-        if: steps.decision.outputs.build == 'true'
+        if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: Fenix-Privacy-Android-${{ env.FENIX_PRIVACY_VERSION_NAME }}
@@ -228,7 +303,7 @@ jobs:
             update.json
 
       - name: Publish Android GitHub Release
-        if: steps.decision.outputs.build == 'true'
+        if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -241,7 +316,7 @@ jobs:
             --notes "Automatically built from Mozilla Firefox ${FENIX_PRIVACY_UPSTREAM_REF} (${FENIX_PRIVACY_UPSTREAM_REVISION}). Signed APK + update manifest."
 
       - name: Record successfully released upstream
-        if: steps.decision.outputs.build == 'true'
+        if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
