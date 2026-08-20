@@ -320,6 +320,15 @@ jobs:
           if-no-files-found: error
           path: upstream/**/outputs/apk/release/*.apk
 
+      - name: Upload unsigned release handoff
+        if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fenix-Privacy-Android-unsigned-${{ env.FENIX_PRIVACY_VERSION_NAME }}
+          retention-days: 3
+          if-no-files-found: error
+          path: upstream/**/outputs/apk/release/*universal*.apk
+
       - name: Sign and verify APK
         if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
         shell: bash
@@ -341,6 +350,14 @@ jobs:
             exit 1
           }
 
+          # Repository secrets are sometimes pasted with a trailing line
+          # break. A newline is part of a JKS alias, so remove only CR/LF.
+          KEY_ALIAS="$(printf '%s' "$ANDROID_KEY_ALIAS" | tr -d '\r\n')"
+          test -n "$KEY_ALIAS" || {
+            echo "Android key alias is empty after removing line breaks" >&2
+            exit 1
+          }
+
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > /tmp/fenix-privacy-release.jks
 
           SDK_ROOT="$MOZBUILD_STATE_PATH/android-sdk-linux"
@@ -356,7 +373,7 @@ jobs:
           "$BUILD_TOOLS/zipalign" -p -f 4 "$APK" /tmp/Fenix-Privacy-aligned.apk
           "$BUILD_TOOLS/apksigner" sign \
             --ks /tmp/fenix-privacy-release.jks \
-            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-key-alias "$KEY_ALIAS" \
             --ks-pass "pass:$ANDROID_STORE_PASSWORD" \
             --key-pass "pass:$ANDROID_KEY_PASSWORD" \
             --out Fenix-Privacy-Android.apk \
