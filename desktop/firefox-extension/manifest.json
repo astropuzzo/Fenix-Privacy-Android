@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Fenix Privacy Desktop",
+  "version": "1.0.0",
+  "description": "Selective Firefox history suppression for domains, keywords, phrases and regular expressions.",
+  "permissions": [
+    "alarms",
+    "history",
+    "storage",
+    "tabs",
+    "webNavigation"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "action": {
+    "default_title": "Fenix Privacy",
+    "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "fenix-privacy-desktop@astropuzzo.github.io",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ],
+        "optional": [
+          "technicalAndInteraction"
+        ]
+      }
+    }
+  }
+}
