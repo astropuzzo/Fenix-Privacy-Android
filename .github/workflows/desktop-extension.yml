@@ -1,4 +1,4 @@
-name: Build Firefox Desktop extension
+name: Build Desktop XPI and Windows EXE
 
 on:
   workflow_dispatch:
@@ -16,8 +16,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  extension:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      signed: ${{ steps.sign.outputs.signed }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -39,12 +44,12 @@ jobs:
           fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
           NODE
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=desktop-v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_tag=desktop-v$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Install Mozilla web-ext
         run: npm install --global web-ext@10
 
-      - name: Run matcher tests
+      - name: Run desktop tests
         run: node desktop/tests/matcher.test.cjs
 
       - name: Lint extension
@@ -59,9 +64,9 @@ jobs:
             --source-dir desktop/firefox-extension \
             --artifacts-dir artifacts \
             --overwrite-dest
-          XPI="$(find artifacts -maxdepth 1 -type f -name '*.zip' -print -quit)"
-          test -n "$XPI"
-          cp "$XPI" artifacts/Fenix-Privacy-Desktop-unsigned.xpi
+          BUILT="$(find artifacts -maxdepth 1 -type f -name '*.zip' -print -quit)"
+          test -n "$BUILT"
+          mv "$BUILT" artifacts/Fenix-Privacy-Desktop-unsigned.xpi
 
       - name: Sign XPI with Mozilla AMO
         id: sign
@@ -73,9 +78,10 @@ jobs:
           set -euo pipefail
           if [[ -z "${WEB_EXT_API_KEY:-}" || -z "${WEB_EXT_API_SECRET:-}" ]]; then
             echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "AMO secrets are not configured; producing unsigned test artifact only."
+            echo "AMO credentials are not configured. A DEV/unsigned XPI and EXE will still be built."
             exit 0
           fi
+
           mkdir -p signed
           web-ext sign \
             --source-dir desktop/firefox-extension \
@@ -83,43 +89,146 @@ jobs:
             --channel unlisted \
             --api-key "$WEB_EXT_API_KEY" \
             --api-secret "$WEB_EXT_API_SECRET"
+
           SIGNED="$(find signed -maxdepth 1 -type f -name '*.xpi' -print -quit)"
           test -n "$SIGNED"
           cp "$SIGNED" artifacts/Fenix-Privacy-Desktop-Windows.xpi
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload XPI handoff
+        uses: actions/upload-artifact@v4
         with:
-          name: Fenix-Privacy-Desktop-${{ steps.version.outputs.version }}
+          name: desktop-xpi-${{ steps.version.outputs.version }}
+          retention-days: 7
+          if-no-files-found: error
           path: artifacts/*.xpi
 
-      - name: Publish signed desktop release
-        if: steps.sign.outputs.signed == 'true'
+  windows-installer:
+    needs: extension
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download XPI
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-xpi-${{ needs.extension.outputs.version }}
+          path: artifacts
+
+      - name: Select XPI for installer
+        id: package
+        shell: pwsh
+        run: |
+          $signed = "${{ needs.extension.outputs.signed }}" -eq "true"
+          if ($signed) {
+            $xpi = Resolve-Path "artifacts/Fenix-Privacy-Desktop-Windows.xpi"
+            "output=Fenix-Privacy-Desktop-Installer" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+            $xpi = Resolve-Path "artifacts/Fenix-Privacy-Desktop-unsigned.xpi"
+            "output=Fenix-Privacy-Desktop-DEV-Installer" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+          "xpi=$($xpi.Path)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows installer EXE
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            $iscc = "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+          }
+          if (-not (Test-Path $iscc)) {
+            throw "ISCC.exe not found after installing Inno Setup"
+          }
+
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          & $iscc `
+            "/DMyAppVersion=${{ needs.extension.outputs.version }}" `
+            "/DXpiSource=${{ steps.package.outputs.xpi }}" `
+            "/DOutputBase=${{ steps.package.outputs.output }}" `
+            "desktop/windows/FenixPrivacyInstaller.iss"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup failed with exit code $LASTEXITCODE"
+          }
+
+          Get-ChildItem "out\*.exe"
+
+      - name: Assemble desktop artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path final | Out-Null
+          Copy-Item artifacts\*.xpi final\
+          Copy-Item out\*.exe final\
+
+      - name: Upload Windows desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fenix-Privacy-Desktop-${{ needs.extension.outputs.version }}
+          retention-days: 30
+          if-no-files-found: error
+          path: final/*
+
+  publish:
+    needs: [extension, windows-installer]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download final desktop artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Fenix-Privacy-Desktop-${{ needs.extension.outputs.version }}
+          path: final
+
+      - name: Publish desktop GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.extension.outputs.version }}
+          SIGNED: ${{ needs.extension.outputs.signed }}
+          RELEASE_TAG: ${{ needs.extension.outputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "${{ steps.version.outputs.tag }}" \
-            artifacts/Fenix-Privacy-Desktop-Windows.xpi \
-            --title "Fenix Privacy Desktop ${{ steps.version.outputs.version }}" \
-            --notes "Mozilla-signed Firefox Desktop extension for Windows. Selective domain/keyword/phrase/regex history suppression; opt-in rule sync between Firefox Desktop profiles through Firefox storage.sync."
+
+          if [[ "$SIGNED" == "true" ]]; then
+            gh release create "$RELEASE_TAG" \
+              final/Fenix-Privacy-Desktop-Windows.xpi \
+              final/Fenix-Privacy-Desktop-Installer.exe \
+              --title "Fenix Privacy Desktop $VERSION" \
+              --notes "Mozilla-signed Firefox extension plus Windows installer EXE. The EXE launches the signed XPI in Firefox for the normal add-on confirmation."
+          else
+            DEV_TAG="desktop-dev-v$VERSION"
+            gh release create "$DEV_TAG" \
+              final/Fenix-Privacy-Desktop-unsigned.xpi \
+              final/Fenix-Privacy-Desktop-DEV-Installer.exe \
+              --prerelease \
+              --title "Fenix Privacy Desktop DEV $VERSION" \
+              --notes "Automatic development build. The XPI is unsigned because AMO_API_KEY / AMO_API_SECRET are not configured; Firefox Release will not permanently install an unsigned add-on."
+          fi
 
       - name: Publish Firefox self-update manifest
-        if: steps.sign.outputs.signed == 'true'
+        if: needs.extension.outputs.signed == 'true'
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ needs.extension.outputs.version }}
+          RELEASE_TAG: ${{ needs.extension.outputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
-          SHA256="$(sha256sum artifacts/Fenix-Privacy-Desktop-Windows.xpi | awk '{print $1}')"
-          UPDATE_LINK="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/Fenix-Privacy-Desktop-Windows.xpi"
+
+          SHA256="$(sha256sum final/Fenix-Privacy-Desktop-Windows.xpi | awk '{print $1}')"
+          UPDATE_LINK="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/Fenix-Privacy-Desktop-Windows.xpi"
           export SHA256 UPDATE_LINK
-          # Remove the temporary version stamp and fast-forward before creating the tracked feed.
-          git checkout -- desktop/firefox-extension/manifest.json
+
           git fetch origin main
-          git rebase origin/main
+          git checkout main
+          git reset --hard origin/main
+
           python3 - <<'PY'
           import json, os
           data = {
@@ -129,7 +238,9 @@ jobs:
                           "version": os.environ["VERSION"],
                           "update_link": os.environ["UPDATE_LINK"],
                           "update_hash": "sha256:" + os.environ["SHA256"],
-                          "applications": {"gecko": {"strict_min_version": "140.0"}},
+                          "applications": {
+                              "gecko": {"strict_min_version": "140.0"}
+                          },
                       }]
                   }
               }
@@ -138,8 +249,9 @@ jobs:
               json.dump(data, f, indent=2)
               f.write("\n")
           PY
+
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add desktop-updates.json
           git diff --cached --quiet || git commit -m "chore: update desktop add-on feed [skip ci]"
-          git push
+          git push origin main
