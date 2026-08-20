@@ -49,10 +49,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          read REF SHA < <(
-            git ls-remote --tags https://github.com/mozilla-firefox/firefox.git 'refs/tags/FIREFOX_*_RELEASE' |
-            python3 scripts/find_latest_stable_ref.py --verify-android-release
-          )
+          lookup=''
+          for attempt in 1 2 3; do
+            set +e
+            lookup="$(
+              git ls-remote --tags https://github.com/mozilla-firefox/firefox.git 'refs/tags/FIREFOX_*_RELEASE' |
+                python3 scripts/find_latest_stable_ref.py --verify-android-release
+            )"
+            status=$?
+            set -e
+
+            if ((status == 0)) && [[ -n "$lookup" ]]; then
+              break
+            fi
+            if ((attempt == 3)); then
+              echo "Stable Firefox lookup failed after 3 attempts." >&2
+              exit "${status:-1}"
+            fi
+            delay=$((15 * attempt))
+            echo "Stable Firefox lookup failed; retrying in ${delay}s." >&2
+            sleep "$delay"
+          done
+          read -r REF SHA <<< "$lookup"
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "tag_sha=$SHA" >> "$GITHUB_OUTPUT"
           CURRENT="$(cat UPSTREAM_REF 2>/dev/null || true)"
