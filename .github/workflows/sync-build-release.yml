@@ -1,4 +1,4 @@
-name: Sync Firefox, build and release
+name: Build Android APK
 
 on:
   workflow_dispatch:
@@ -8,13 +8,23 @@ on:
         required: false
         default: true
         type: boolean
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'UPSTREAM_REF'
+      - 'UPSTREAM_REVISION'
+      - 'desktop/**'
+      - 'desktop-updates.json'
+      - '.github/workflows/desktop-extension.yml'
+      - '**/*.md'
   schedule:
     - cron: '23 4 * * *'
+
 permissions:
   contents: write
 
 concurrency:
-  group: fenix-privacy-release
+  group: fenix-privacy-android
   cancel-in-progress: false
 
 jobs:
@@ -23,6 +33,7 @@ jobs:
     timeout-minutes: 360
     env:
       MOZBUILD_STATE_PATH: ${{ github.workspace }}/.mozbuild
+
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +42,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          read REF SHA < <(git ls-remote --tags https://github.com/mozilla-firefox/firefox.git 'refs/tags/FIREFOX_*_RELEASE' | python3 scripts/find_latest_stable_ref.py --verify-android-release)
+          read REF SHA < <(
+            git ls-remote --tags https://github.com/mozilla-firefox/firefox.git 'refs/tags/FIREFOX_*_RELEASE' |
+            python3 scripts/find_latest_stable_ref.py --verify-android-release
+          )
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "tag_sha=$SHA" >> "$GITHUB_OUTPUT"
           CURRENT="$(cat UPSTREAM_REF 2>/dev/null || true)"
@@ -41,23 +55,41 @@ jobs:
       - name: Decide whether to build
         id: decision
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_FORCE: ${{ inputs.force }}
+          REF: ${{ steps.upstream.outputs.ref }}
+          CURRENT: ${{ steps.upstream.outputs.current }}
         run: |
-          FORCE="${{ github.event_name != 'schedule' || inputs.force == true }}"
-          if [[ "${{ steps.upstream.outputs.ref }}" == "${{ steps.upstream.outputs.current }}" && "$FORCE" != "true" ]]; then
+          set -euo pipefail
+          FORCE=false
+
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            FORCE=true
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "${INPUT_FORCE:-false}" == "true" ]]; then
+            FORCE=true
+          fi
+
+          if [[ "$REF" == "$CURRENT" && "$FORCE" != "true" ]]; then
             echo "build=false" >> "$GITHUB_OUTPUT"
             echo "No new stable Firefox release."
           else
             echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "Building Android APK (event=$EVENT_NAME, force=$FORCE)."
           fi
 
-      - name: Validate signing secrets
+      - name: Validate Android signing secrets
         if: steps.decision.outputs.build == 'true'
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           STORE_PASS: ${{ secrets.ANDROID_STORE_PASSWORD }}
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
         run: |
+          set -euo pipefail
           test -n "$KEYSTORE" && test -n "$ALIAS" && test -n "$STORE_PASS" && test -n "$KEY_PASS" || {
             echo "Missing Android signing secrets. See docs/SIGNING.md" >&2
             exit 1
@@ -70,7 +102,8 @@ jobs:
           set -euo pipefail
           git init upstream
           git -C upstream remote add origin https://github.com/mozilla-firefox/firefox.git
-          git -C upstream fetch --depth=1 origin "refs/tags/${{ steps.upstream.outputs.ref }}:refs/tags/${{ steps.upstream.outputs.ref }}"
+          git -C upstream fetch --depth=1 origin \
+            "refs/tags/${{ steps.upstream.outputs.ref }}:refs/tags/${{ steps.upstream.outputs.ref }}"
           git -C upstream checkout --detach "${{ steps.upstream.outputs.ref }}"
           REV="$(git -C upstream rev-parse HEAD)"
           echo "FENIX_PRIVACY_UPSTREAM_REVISION=$REV" >> "$GITHUB_ENV"
@@ -83,18 +116,20 @@ jobs:
       - name: Prepare version
         if: steps.decision.outputs.build == 'true'
         shell: bash
+        env:
+          RAW: ${{ steps.upstream.outputs.ref }}
         run: |
           set -euo pipefail
-          RAW="${{ steps.upstream.outputs.ref }}"
           FIREFOX_VERSION="$(python3 - <<'PY'
           import os, re
-          s=os.environ['RAW']
-          m=re.fullmatch(r'FIREFOX_(\d+)_(\d+)(?:_(\d+))?_RELEASE', s)
-          if not m: raise SystemExit('bad Firefox release ref')
+          s = os.environ["RAW"]
+          m = re.fullmatch(r"FIREFOX_(\d+)_(\d+)(?:_(\d+))?_RELEASE", s)
+          if not m:
+              raise SystemExit("bad Firefox release ref")
           parts = [str(int(m.group(1))), str(int(m.group(2)))]
           if m.group(3) is not None:
               parts.append(str(int(m.group(3))))
-          print('.'.join(parts))
+          print(".".join(parts))
           PY
           )"
           CODE="$(( $(date -u +%s) - 1735689600 ))"
@@ -102,8 +137,6 @@ jobs:
           echo "FENIX_PRIVACY_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
           echo "FENIX_PRIVACY_VERSION_NAME=$NAME" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=v$NAME" >> "$GITHUB_ENV"
-        env:
-          RAW: ${{ steps.upstream.outputs.ref }}
 
       - name: Bootstrap Firefox Android artifact build
         if: steps.decision.outputs.build == 'true'
@@ -115,9 +148,8 @@ jobs:
         working-directory: upstream
         run: ./mach gradle fenix:assembleRelease -PdisableDebugSigning
 
-      - name: Sign APK
+      - name: Sign and verify APK
         if: steps.decision.outputs.build == 'true'
-        id: sign
         shell: bash
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -126,17 +158,28 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          APK="$(find upstream -type f -path '*/mobile/android/fenix/app/outputs/apk/release/*' -name '*universal*.apk' -print -quit)"
+
+          APK="$(find upstream -type f -path '*/fenix/app/outputs/apk/release/*' -name '*universal*.apk' -print -quit)"
           if [[ -z "$APK" ]]; then
-            APK="$(find upstream -type f -path '*/fenix/app/outputs/apk/release/*' -name '*universal*.apk' -print -quit)"
+            APK="$(find upstream -type f -name '*universal*.apk' -print -quit)"
           fi
-          test -n "$APK" || { echo "Universal APK not found" >&2; find upstream -type f -name '*.apk' -print >&2; exit 1; }
+          test -n "$APK" || {
+            echo "Universal APK not found" >&2
+            find upstream -type f -name '*.apk' -print >&2
+            exit 1
+          }
+
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > /tmp/fenix-privacy-release.jks
+
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           if [[ -z "$SDK_ROOT" || ! -d "$SDK_ROOT/build-tools" ]]; then
             SDK_ROOT="$(find "$MOZBUILD_STATE_PATH" -mindepth 1 -maxdepth 1 -type d -name 'android-sdk-*' -print -quit)"
           fi
-          test -n "$SDK_ROOT" && test -d "$SDK_ROOT/build-tools" || { echo "Android SDK build-tools not found" >&2; exit 1; }
+          test -n "$SDK_ROOT" && test -d "$SDK_ROOT/build-tools" || {
+            echo "Android SDK build-tools not found" >&2
+            exit 1
+          }
+
           BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
           "$BUILD_TOOLS/zipalign" -p -f 4 "$APK" /tmp/Fenix-Privacy-aligned.apk
           "$BUILD_TOOLS/apksigner" sign \
@@ -144,36 +187,47 @@ jobs:
             --ks-key-alias "$ANDROID_KEY_ALIAS" \
             --ks-pass "pass:$ANDROID_STORE_PASSWORD" \
             --key-pass "pass:$ANDROID_KEY_PASSWORD" \
-            --out Fenix-Privacy-universal.apk \
+            --out Fenix-Privacy-Android.apk \
             /tmp/Fenix-Privacy-aligned.apk
-          VERIFY_OUTPUT="$("$BUILD_TOOLS/apksigner" verify --verbose --print-certs Fenix-Privacy-universal.apk)"
+
+          VERIFY_OUTPUT="$("$BUILD_TOOLS/apksigner" verify --verbose --print-certs Fenix-Privacy-Android.apk)"
           printf '%s\n' "$VERIFY_OUTPUT"
-          ACTUAL_CERT="$(printf '%s\n' "$VERIFY_OUTPUT" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+
+          ACTUAL_CERT="$(
+            printf '%s\n' "$VERIFY_OUTPUT" |
+            sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
+            head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':'
+          )"
           EXPECTED_CERT="$(tr '[:upper:]' '[:lower:]' < SIGNING_CERT_SHA256 | tr -d '[:space:]:')"
+
           test -n "$ACTUAL_CERT" && [[ "$ACTUAL_CERT" == "$EXPECTED_CERT" ]] || {
             echo "Signing certificate mismatch" >&2
             exit 1
           }
+
           rm -f /tmp/fenix-privacy-release.jks /tmp/Fenix-Privacy-aligned.apk
 
-      - name: Create signed update manifest
+      - name: Create update manifest
         if: steps.decision.outputs.build == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          export FENIX_PRIVACY_APK_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/Fenix-Privacy-universal.apk"
-          python3 scripts/make_update_json.py Fenix-Privacy-universal.apk update.json
+          export FENIX_PRIVACY_APK_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/Fenix-Privacy-Android.apk"
+          python3 scripts/make_update_json.py Fenix-Privacy-Android.apk update.json
           cat update.json
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Android build artifact
         if: steps.decision.outputs.build == 'true'
+        uses: actions/upload-artifact@v4
         with:
-          name: Fenix-Privacy-${{ env.FENIX_PRIVACY_VERSION_NAME }}
+          name: Fenix-Privacy-Android-${{ env.FENIX_PRIVACY_VERSION_NAME }}
+          retention-days: 30
+          if-no-files-found: error
           path: |
-            Fenix-Privacy-universal.apk
+            Fenix-Privacy-Android.apk
             update.json
 
-      - name: Publish GitHub release
+      - name: Publish Android GitHub Release
         if: steps.decision.outputs.build == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -181,9 +235,10 @@ jobs:
         run: |
           set -euo pipefail
           gh release create "$RELEASE_TAG" \
-            Fenix-Privacy-universal.apk update.json \
-            --title "Fenix Privacy $FENIX_PRIVACY_VERSION_NAME" \
-            --notes "Built from Mozilla Firefox ${FENIX_PRIVACY_UPSTREAM_REF} (${FENIX_PRIVACY_UPSTREAM_REVISION}). Native domain/keyword/regex history suppression, Firefox Sync support, signed in-app update feed."
+            Fenix-Privacy-Android.apk \
+            update.json \
+            --title "Fenix Privacy Android $FENIX_PRIVACY_VERSION_NAME" \
+            --notes "Automatically built from Mozilla Firefox ${FENIX_PRIVACY_UPSTREAM_REF} (${FENIX_PRIVACY_UPSTREAM_REVISION}). Signed APK + update manifest."
 
       - name: Record successfully released upstream
         if: steps.decision.outputs.build == 'true'
@@ -195,5 +250,5 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add UPSTREAM_REF UPSTREAM_REVISION
-          git diff --cached --quiet || git commit -m "chore: track $FENIX_PRIVACY_UPSTREAM_REF"
+          git diff --cached --quiet || git commit -m "chore: track $FENIX_PRIVACY_UPSTREAM_REF [skip ci]"
           git push
