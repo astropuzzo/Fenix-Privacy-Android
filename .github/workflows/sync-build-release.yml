@@ -237,12 +237,16 @@ jobs:
         working-directory: upstream
         env:
           MOZCONFIG: mozconfig
-          # Upstream requests a 7 GiB Gradle heap, leaving essentially no RAM
-          # for Kotlin/Android workers on the 7.8 GiB GitHub-hosted runner.
+          # Keep enough memory for the Actions agent and OS on the 7.8 GiB
+          # hosted runner. Kotlin compiles inside this capped Gradle process,
+          # avoiding a second multi-gigabyte daemon.
           GRADLE_FLAGS: >-
+            --no-daemon
             --no-parallel
-            --max-workers=2
-            "-Dorg.gradle.jvmargs=-Xmx4g -Xms1g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -XX:+UseParallelGC"
+            --max-workers=1
+            -Pkotlin.compiler.execution.strategy=in-process
+            -Dorg.gradle.vfs.watch=false
+            "-Dorg.gradle.jvmargs=-Xmx3g -Xms512m -XX:MaxMetaspaceSize=768m -XX:+HeapDumpOnOutOfMemoryError -XX:+UseParallelGC"
         shell: bash
         run: |
           set -euo pipefail
