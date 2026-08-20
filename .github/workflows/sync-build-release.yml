@@ -128,8 +128,8 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path("upstream/python/mozboot/mozboot/linux_common.py")
-          text = path.read_text(encoding="utf-8")
+          bootstrap = Path("upstream/python/mozboot/mozboot/linux_common.py")
+          text = bootstrap.read_text(encoding="utf-8")
 
           avd_manifest = "            avd_manifest_path=android.AVD_MANIFEST_X86_64,\n"
           avd_toolchain = "        self.install_toolchain_artifact(android.X86_64_ANDROID_AVD)\n"
@@ -145,11 +145,20 @@ jobs:
               "        # CI APK build: emulator/AVD payload intentionally omitted.\n",
               1,
           )
-          path.write_text(text, encoding="utf-8")
+          bootstrap.write_text(text, encoding="utf-8")
+
+          packages = Path("upstream/python/mozboot/mozboot/android-packages.txt")
+          package_lines = packages.read_text(encoding="utf-8").splitlines()
+          if package_lines.count("emulator") != 1:
+              raise SystemExit("Mozilla Android package list emulator anchor changed")
+          package_lines.remove("emulator")
+          packages.write_text("\n".join(package_lines) + "\n", encoding="utf-8")
           PY
 
           grep -n -A8 -B4 'ensure_mobile_android_packages\|avd_manifest_path' \
             upstream/python/mozboot/mozboot/linux_common.py
+          echo 'Android SDK packages for CI:'
+          cat upstream/python/mozboot/mozboot/android-packages.txt
 
       - name: Prepare version
         if: steps.decision.outputs.build == 'true'
@@ -176,10 +185,18 @@ jobs:
           echo "FENIX_PRIVACY_VERSION_NAME=$NAME" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=v$NAME" >> "$GITHUB_ENV"
 
-      - name: Show runner disk before bootstrap
+      - name: Free runner disk for Firefox build
         if: steps.decision.outputs.build == 'true'
         shell: bash
-        run: df -h /
+        run: |
+          set -euo pipefail
+          echo 'Disk before cleanup:'
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/share/swift || true
+          sudo apt-get clean
+          docker system prune -af || true
+          echo 'Disk after cleanup:'
+          df -h /
 
       - name: Bootstrap Firefox Android artifact build
         if: steps.decision.outputs.build == 'true'
@@ -191,16 +208,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if find "$MOZBUILD_STATE_PATH" -maxdepth 3 -iname '*android-avd*' -o -iname '*android-device*' | grep -q .; then
+          if find "$MOZBUILD_STATE_PATH" -maxdepth 3 \( -iname '*android-avd*' -o -iname '*android-device*' \) | grep -q .; then
             echo "Unexpected Android emulator/AVD payload found:" >&2
             find "$MOZBUILD_STATE_PATH" -maxdepth 3 \( -iname '*android-avd*' -o -iname '*android-device*' \) -print >&2
             exit 1
           fi
+          if [[ -d "$MOZBUILD_STATE_PATH/android-sdk-linux/emulator" ]]; then
+            echo "Unexpected Android SDK emulator package was installed" >&2
+            exit 1
+          fi
           df -h /
+
+      - name: Initialize Android artifact build context
+        if: steps.decision.outputs.build == 'true'
+        working-directory: upstream
+        env:
+          MOZCONFIG: mozconfig
+        run: ./mach build
 
       - name: Build unsigned universal release APK
         if: steps.decision.outputs.build == 'true'
         working-directory: upstream
+        env:
+          MOZCONFIG: mozconfig
         run: ./mach gradle fenix:assembleRelease -PdisableDebugSigning
 
       - name: Show produced APKs
