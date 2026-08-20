@@ -82,19 +82,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "signed=false" >> "$GITHUB_OUTPUT"
+
           if [[ -z "${WEB_EXT_API_KEY:-}" || -z "${WEB_EXT_API_SECRET:-}" ]]; then
-            echo "signed=false" >> "$GITHUB_OUTPUT"
             echo "AMO credentials are not configured. A DEV/unsigned XPI and EXE will still be built."
             exit 0
           fi
 
           mkdir -p signed
-          web-ext sign \
-            --source-dir desktop/firefox-extension \
-            --artifacts-dir signed \
-            --channel unlisted \
-            --api-key "$WEB_EXT_API_KEY" \
-            --api-secret "$WEB_EXT_API_SECRET"
+          if ! web-ext sign \
+              --source-dir desktop/firefox-extension \
+              --artifacts-dir signed \
+              --channel unlisted \
+              --api-key "$WEB_EXT_API_KEY" \
+              --api-secret "$WEB_EXT_API_SECRET"; then
+            echo "::warning::AMO signing failed. Building the unsigned DEV XPI and EXE instead; check AMO_API_KEY and AMO_API_SECRET."
+            rm -rf signed
+            exit 0
+          fi
 
           SIGNED="$(find signed -maxdepth 1 -type f -name '*.xpi' -print -quit)"
           test -n "$SIGNED"
