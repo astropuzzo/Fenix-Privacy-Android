@@ -3,21 +3,55 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const path = require("node:path");
 
-const event = () => ({ addListener() {} });
+function event() {
+  const listeners = [];
+  return {
+    listeners,
+    addListener(fn) { listeners.push(fn); },
+    emit(...args) { for (const fn of listeners) fn(...args); },
+  };
+}
+
+const state = {};
+const deleteCalls = [];
+const onVisited = event();
 const browser = {
+  permissions: {
+    async contains() { return false; },
+    onRemoved: event(),
+  },
   storage: {
     sync: { async get() { return {}; }, async set() {} },
-    local: { async get() { return {}; }, async set() {} },
+    local: {
+      async get(defaults) { return { ...(defaults || {}), ...state }; },
+      async set(patch) { Object.assign(state, patch); },
+    },
     onChanged: event(),
   },
-  history: { onVisited: event(), async deleteUrl() {}, async search() { return []; } },
-  webNavigation: { onCommitted: event() },
+  history: {
+    onVisited,
+    async deleteUrl(details) { deleteCalls.push(details.url); },
+    async search() { return []; },
+  },
+  webNavigation: { onCommitted: event(), onHistoryStateUpdated: event() },
   tabs: { onUpdated: event() },
   alarms: { async clear() {}, create() {}, onAlarm: event() },
-  runtime: { onInstalled: event(), onStartup: event(), onMessage: event() },
+  runtime: {
+    onInstalled: event(),
+    onStartup: event(),
+    onMessage: event(),
+    getManifest() { return { version: "test" }; },
+  },
 };
 
-const context = { browser, console, URL, decodeURIComponent, setTimeout, clearTimeout };
+const context = {
+  browser,
+  console,
+  URL,
+  decodeURIComponent,
+  setTimeout(fn) { fn(); return 1; },
+  clearTimeout() {},
+};
 vm.createContext(context);
 const background = path.join(__dirname, "..", "firefox-extension", "background.js");
 vm.runInContext(fs.readFileSync(background, "utf8"), context, { filename: background });
@@ -38,4 +72,27 @@ assert.equal(context.shouldSuppress("https://test/abc123", "", settings({ regex:
 assert.equal(context.shouldSuppress("https://test/clean", "", settings({ regex: ["("] })), false);
 assert.equal(context.shouldSuppress("https://example.com/", "", settings({ enabled: false, domains: ["example.com"] })), false);
 
-console.log("Fenix Privacy Desktop matcher tests passed");
+async function runIntegration() {
+  // Let immediate background initialization finish before simulating user input.
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  await context.persistSettings(settings({ domains: ["example.com"] }));
+  onVisited.emit({ url: "https://example.com/private", title: "Private" });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.ok(deleteCalls.includes("https://example.com/private"), "matching visited URL should be deleted");
+  assert.equal(state.totalRemoved, 1, "one matching history visit should increment the counter once");
+  assert.equal(state.domains[0], "example.com");
+  assert.equal(typeof state.lastMatchAt, "number");
+  assert.ok(state.lastMatchAt > 0);
+}
+
+runIntegration()
+  .then(() => console.log("Fenix Privacy Desktop matcher + runtime tests passed"))
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
