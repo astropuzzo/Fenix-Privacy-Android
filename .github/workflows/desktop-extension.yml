@@ -1,0 +1,111 @@
+name: Build Firefox Desktop extension
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop-extension.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fenix-privacy-desktop
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Mozilla web-ext
+        run: npm install --global web-ext@10
+
+      - name: Run matcher tests
+        run: node desktop/tests/matcher.test.cjs
+
+      - name: Lint extension
+        run: web-ext lint --source-dir desktop/firefox-extension
+
+      - name: Build unsigned XPI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          web-ext build \
+            --source-dir desktop/firefox-extension \
+            --artifacts-dir artifacts \
+            --overwrite-dest
+          XPI="$(find artifacts -maxdepth 1 -type f -name '*.zip' -print -quit)"
+          test -n "$XPI"
+          cp "$XPI" artifacts/Fenix-Privacy-Desktop-unsigned.xpi
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./desktop/firefox-extension/manifest.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=desktop-v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check existing signed release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sign XPI with Mozilla AMO
+        id: sign
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${WEB_EXT_API_KEY:-}" || -z "${WEB_EXT_API_SECRET:-}" ]]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "AMO secrets are not configured; producing unsigned test artifact only."
+            exit 0
+          fi
+          mkdir -p signed
+          web-ext sign \
+            --source-dir desktop/firefox-extension \
+            --artifacts-dir signed \
+            --channel unlisted \
+            --api-key "$WEB_EXT_API_KEY" \
+            --api-secret "$WEB_EXT_API_SECRET"
+          SIGNED="$(find signed -maxdepth 1 -type f -name '*.xpi' -print -quit)"
+          test -n "$SIGNED"
+          cp "$SIGNED" artifacts/Fenix-Privacy-Desktop-Windows.xpi
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Fenix-Privacy-Desktop-${{ steps.version.outputs.version }}
+          path: artifacts/*.xpi
+
+      - name: Publish signed desktop release
+        if: steps.sign.outputs.signed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${{ steps.version.outputs.tag }}" \
+            artifacts/Fenix-Privacy-Desktop-Windows.xpi \
+            --title "Fenix Privacy Desktop ${{ steps.version.outputs.version }}" \
+            --notes "Mozilla-signed Firefox Desktop extension for Windows. Selective domain/keyword/phrase/regex history suppression; rules sync between Firefox Desktop profiles through Firefox storage.sync when Add-ons Sync is enabled."
