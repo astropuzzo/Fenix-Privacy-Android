@@ -232,6 +232,21 @@ jobs:
           MOZCONFIG: mozconfig
         run: ./mach build
 
+      - name: Release bootstrap Gradle memory
+        if: steps.decision.outputs.build == 'true'
+        working-directory: upstream
+        env:
+          MOZCONFIG: mozconfig
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `mach build` uses upstream's 7 GiB Gradle daemon. It remains alive
+          # after GeckoView is published and starves the separate Fenix build.
+          ./mach gradle --stop || true
+          pkill -f '[K]otlinCompileDaemon' || true
+          sleep 3
+          free -h
+
       - name: Build unsigned universal release APK
         if: steps.decision.outputs.build == 'true'
         working-directory: upstream
