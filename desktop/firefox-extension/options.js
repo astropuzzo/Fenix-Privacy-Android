@@ -8,6 +8,10 @@ function lines(id) {
   return $(id).value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
 }
 
+function showError(error) {
+  $("status").textContent = `Extension error: ${error?.message || error}`;
+}
+
 async function readForm() {
   const previous = await browser.runtime.sendMessage({ type: "get-settings" });
   const next = { ...previous };
@@ -47,35 +51,56 @@ async function save(showMessage = true) {
   return settings;
 }
 
-$("save").addEventListener("click", () => { $("status").textContent = ""; void save(); });
+$("save").addEventListener("click", async () => {
+  try {
+    $("status").textContent = "";
+    await save();
+  } catch (error) {
+    showError(error);
+  }
+});
 
 $("clean").addEventListener("click", async () => {
-  await save(false);
-  $("status").textContent = "Scanning Firefox history…";
-  const result = await browser.runtime.sendMessage({ type: "scrub-now" });
-  $("status").textContent = `Scanned ${result.scanned.toLocaleString()} entries; removed ${result.removed.toLocaleString()}.`;
+  try {
+    $("status").textContent = "";
+    await save(false);
+    $("status").textContent = "Scanning Firefox history…";
+    const result = await browser.runtime.sendMessage({ type: "scrub-now" });
+    $("status").textContent = `Scanned ${result.scanned.toLocaleString()} entries; removed ${result.removed.toLocaleString()}.`;
+  } catch (error) {
+    showError(error);
+  }
 });
 
 $("test").addEventListener("click", async () => {
-  const settings = await readForm();
-  const result = await browser.runtime.sendMessage({
-    type: "test-rule",
-    settings,
-    url: $("testUrl").value,
-    title: $("testTitle").value,
-  });
-  $("testResult").textContent = result.match ? "MATCH — history would be removed" : "No match";
+  try {
+    $("testResult").textContent = "Testing…";
+    const settings = await readForm();
+    const result = await browser.runtime.sendMessage({
+      type: "test-rule",
+      settings,
+      url: $("testUrl").value,
+      title: $("testTitle").value,
+    });
+    $("testResult").textContent = result.match ? "MATCH — history will be removed" : "No match";
+  } catch (error) {
+    $("testResult").textContent = `Error: ${error?.message || error}`;
+  }
 });
 
 $("export").addEventListener("click", async () => {
-  const settings = await readForm();
-  const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "fenix-privacy-rules.json";
-  a.click();
-  URL.revokeObjectURL(url);
+  try {
+    const settings = await readForm();
+    const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "fenix-privacy-rules.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    showError(error);
+  }
 });
 
 $("import").addEventListener("change", async (event) => {
@@ -94,4 +119,4 @@ $("import").addEventListener("change", async (event) => {
   }
 });
 
-load();
+load().catch(showError);
