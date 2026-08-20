@@ -120,7 +120,7 @@ jobs:
         if: steps.decision.outputs.build == 'true'
         run: python3 scripts/apply_fenix_privacy.py upstream
 
-      - name: Remove emulator-only payload from Mozilla bootstrap
+      - name: Remove AVD-only payload from Mozilla bootstrap
         if: steps.decision.outputs.build == 'true'
         shell: bash
         run: |
@@ -142,22 +142,15 @@ jobs:
           text = text.replace(avd_manifest, "            avd_manifest_path=None,\n", 1)
           text = text.replace(
               avd_toolchain,
-              "        # CI APK build: emulator/AVD payload intentionally omitted.\n",
+              "        # CI APK build: AVD/system-image toolchain intentionally omitted.\n",
               1,
           )
           bootstrap.write_text(text, encoding="utf-8")
-
-          packages = Path("upstream/python/mozboot/mozboot/android-packages.txt")
-          package_lines = packages.read_text(encoding="utf-8").splitlines()
-          if package_lines.count("emulator") != 1:
-              raise SystemExit("Mozilla Android package list emulator anchor changed")
-          package_lines.remove("emulator")
-          packages.write_text("\n".join(package_lines) + "\n", encoding="utf-8")
           PY
 
           grep -n -A8 -B4 'ensure_mobile_android_packages\|avd_manifest_path' \
             upstream/python/mozboot/mozboot/linux_common.py
-          echo 'Android SDK packages for CI:'
+          echo 'Android SDK packages retained for configure/build:'
           cat upstream/python/mozboot/mozboot/android-packages.txt
 
       - name: Prepare version
@@ -203,20 +196,20 @@ jobs:
         working-directory: upstream
         run: ./mach --no-interactive bootstrap --application-choice="GeckoView/Firefox for Android Artifact Mode"
 
-      - name: Verify AVD was not installed
+      - name: Verify AVD system-image was not installed
         if: steps.decision.outputs.build == 'true'
         shell: bash
         run: |
           set -euo pipefail
           if find "$MOZBUILD_STATE_PATH" -maxdepth 3 \( -iname '*android-avd*' -o -iname '*android-device*' \) | grep -q .; then
-            echo "Unexpected Android emulator/AVD payload found:" >&2
+            echo "Unexpected Android AVD/system-image payload found:" >&2
             find "$MOZBUILD_STATE_PATH" -maxdepth 3 \( -iname '*android-avd*' -o -iname '*android-device*' \) -print >&2
             exit 1
           fi
-          if [[ -d "$MOZBUILD_STATE_PATH/android-sdk-linux/emulator" ]]; then
-            echo "Unexpected Android SDK emulator package was installed" >&2
+          test -d "$MOZBUILD_STATE_PATH/android-sdk-linux/emulator" || {
+            echo "Android SDK emulator package required by Mozilla configure is missing" >&2
             exit 1
-          fi
+          }
           df -h /
 
       - name: Initialize Android artifact build context
@@ -276,9 +269,9 @@ jobs:
 
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > /tmp/fenix-privacy-release.jks
 
-          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-          if [[ -z "$SDK_ROOT" || ! -d "$SDK_ROOT/build-tools" ]]; then
-            SDK_ROOT="$(find "$MOZBUILD_STATE_PATH" -mindepth 1 -maxdepth 1 -type d -name 'android-sdk-*' -print -quit)"
+          SDK_ROOT="$MOZBUILD_STATE_PATH/android-sdk-linux"
+          if [[ ! -d "$SDK_ROOT/build-tools" ]]; then
+            SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           fi
           test -n "$SDK_ROOT" && test -d "$SDK_ROOT/build-tools" || {
             echo "Android SDK build-tools not found" >&2
