@@ -18,7 +18,7 @@ permissions:
 
 concurrency:
   group: fenix-privacy-desktop-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   extension:
@@ -27,6 +27,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       release_tag: ${{ steps.version.outputs.release_tag }}
       signed: ${{ steps.sign.outputs.signed }}
+      sign_status: ${{ steps.sign.outputs.status }}
 
     steps:
       - uses: actions/checkout@v4
@@ -83,28 +84,44 @@ jobs:
         run: |
           set -euo pipefail
           echo "signed=false" >> "$GITHUB_OUTPUT"
+          echo "status=missing" >> "$GITHUB_OUTPUT"
 
-          if [[ -z "${WEB_EXT_API_KEY:-}" || -z "${WEB_EXT_API_SECRET:-}" ]]; then
-            echo "AMO credentials are not configured. A DEV/unsigned XPI and EXE will still be built."
+          API_KEY="$(printf '%s' "${WEB_EXT_API_KEY:-}" | tr -d '\r\n')"
+          API_SECRET="$(printf '%s' "${WEB_EXT_API_SECRET:-}" | tr -d '\r\n')"
+
+          if [[ -z "$API_KEY" || -z "$API_SECRET" ]]; then
+            echo "::warning::AMO repository secrets are missing or empty. Building the unsigned DEV package."
             exit 0
           fi
 
+          echo "AMO credentials detected. Requesting an unlisted Mozilla signature."
           mkdir -p signed
-          if ! web-ext sign \
-              --source-dir desktop/firefox-extension \
-              --artifacts-dir signed \
-              --channel unlisted \
-              --api-key "$WEB_EXT_API_KEY" \
-              --api-secret "$WEB_EXT_API_SECRET"; then
-            echo "::warning::AMO signing failed. Building the unsigned DEV XPI and EXE instead; check AMO_API_KEY and AMO_API_SECRET."
-            rm -rf signed
-            exit 0
+          set +e
+          web-ext sign \
+            --source-dir desktop/firefox-extension \
+            --artifacts-dir signed \
+            --channel unlisted \
+            --api-key "$API_KEY" \
+            --api-secret "$API_SECRET" 2>&1 | tee "$RUNNER_TEMP/web-ext-sign.log"
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if ((status != 0)); then
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+            echo "::error::Mozilla AMO signing failed. The repository secrets were present; see the web-ext error above for the actual AMO/API failure."
+            exit "$status"
           fi
 
           SIGNED="$(find signed -maxdepth 1 -type f -name '*.xpi' -print -quit)"
-          test -n "$SIGNED"
+          test -n "$SIGNED" || {
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+            echo "::error::web-ext reported success but no signed XPI was produced."
+            exit 1
+          }
+
           cp "$SIGNED" artifacts/Fenix-Privacy-Desktop-Windows.xpi
           echo "signed=true" >> "$GITHUB_OUTPUT"
+          echo "status=signed" >> "$GITHUB_OUTPUT"
 
       - name: Upload XPI handoff
         uses: actions/upload-artifact@v4
@@ -203,6 +220,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.extension.outputs.version }}
           SIGNED: ${{ needs.extension.outputs.signed }}
+          SIGN_STATUS: ${{ needs.extension.outputs.sign_status }}
           RELEASE_TAG: ${{ needs.extension.outputs.release_tag }}
         shell: bash
         run: |
@@ -221,7 +239,7 @@ jobs:
               final/Fenix-Privacy-Desktop-DEV-Installer.exe \
               --prerelease \
               --title "Fenix Privacy Desktop DEV $VERSION" \
-              --notes "Automatic development build. The XPI is unsigned because AMO_API_KEY / AMO_API_SECRET are not configured; Firefox Release will not permanently install an unsigned add-on."
+              --notes "Automatic development build. Mozilla signing was skipped because the AMO repository secrets were missing or empty (status: ${SIGN_STATUS:-missing}). Firefox Release will not permanently install the unsigned add-on."
           fi
 
       - name: Publish Firefox self-update manifest
