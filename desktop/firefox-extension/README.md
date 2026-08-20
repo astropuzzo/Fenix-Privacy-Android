@@ -4,7 +4,7 @@ Firefox Desktop WebExtension for selective history suppression. It removes match
 
 ## Privacy model
 
-The extension does not transmit browsing data or rules to a developer-controlled server. Rules stay local by default. The user can explicitly enable rule synchronization; Firefox then presents its built-in data-transmission consent and, only after consent, the extension stores rule preferences in `storage.sync` so Firefox Sync can synchronize them between desktop profiles when Add-ons sync is enabled. Firefox for Android does not currently synchronize WebExtension `storage.sync`; the Android build in this repository therefore has its own native rule store.
+The extension does not transmit browsing data or rules to a developer-controlled server. Rules stay local by default. The user can explicitly enable rule synchronization; Firefox then presents its built-in data-transmission consent for the rule data (which can contain domains/search terms/settings) and, only after consent, the extension stores rule preferences in `storage.sync` so Firefox Sync can synchronize them between desktop profiles when Add-ons sync is enabled. Firefox for Android does not currently synchronize WebExtension `storage.sync`; the Android build in this repository therefore has its own native rule store.
 
 ## Permissions
 
@@ -16,4 +16,4 @@ The extension does not transmit browsing data or rules to a developer-controlled
 
 ## Install on Windows
 
-A normal Firefox Release build requires Mozilla-signed add-ons. The GitHub workflow can create an unlisted signed XPI once repository secrets `AMO_API_KEY` and `AMO_API_SECRET` are configured. Until then, the unsigned XPI is suitable for temporary testing via `about:debugging` → **This Firefox** → **Load Temporary Add-on** → select `manifest.json` or the unsigned XPI.
+A normal Firefox Release build requires Mozilla-signed add-ons. The GitHub workflow can create an unlisted signed XPI once repository secrets `AMO_API_KEY` and `AMO_API_SECRET` are configured. The signed XPI contains a self-distribution `update_url`; when this repository is public, Firefox reads `desktop-updates.json` and automatically installs later signed releases with higher versions. Until then, the unsigned XPI is suitable for temporary testing via `about:debugging` → **This Firefox** → **Load Temporary Add-on** → select `manifest.json` or the unsigned XPI.

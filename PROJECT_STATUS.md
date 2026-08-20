@@ -46,4 +46,4 @@ Android requires user confirmation for normal APK updates; a non-root/non-device
 - History URL/domain/query matching plus title matching through `tabs.onUpdated`.
 - Startup and periodic history scrubbing.
 - Rule sync through Firefox `storage.sync` on desktop; local fallback if unavailable.
-- `desktop-extension.yml` lints/builds on every desktop change and optionally signs unlisted through AMO when repository credentials are present.
+- `desktop-extension.yml` lints/builds on every desktop change, stamps a monotonically increasing version, optionally signs unlisted through AMO, and publishes a Firefox self-update manifest when credentials are present.

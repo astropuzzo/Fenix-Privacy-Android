@@ -16,6 +16,7 @@ const DEFAULTS = Object.freeze({
 });
 
 const ALARM_NAME = "fenix-privacy-history-scrub";
+const SYNC_DATA_PERMISSIONS = Object.freeze(["browsingActivity", "searchTerms", "technicalAndInteraction"]);
 const SYNC_KEYS = Object.freeze([
   "enabled", "caseSensitive", "wholeWord", "domains", "keywords", "regex",
   "scrubOnStartup", "scrubEveryMinutes", "syncRules",
@@ -38,7 +39,7 @@ function normalizeSettings(raw = {}) {
 
 async function hasSyncConsent() {
   try {
-    return await browser.permissions.contains({ data_collection: ["technicalAndInteraction"] });
+    return await browser.permissions.contains({ data_collection: SYNC_DATA_PERMISSIONS });
   } catch (_) {
     return false;
   }
@@ -281,7 +282,7 @@ browser.runtime.onStartup.addListener(async () => {
 
 if (browser.permissions?.onRemoved) {
   browser.permissions.onRemoved.addListener((permissions) => {
-    if (permissions.data_collection?.includes("technicalAndInteraction")) {
+    if (permissions.data_collection?.some((permission) => SYNC_DATA_PERMISSIONS.includes(permission))) {
       cached = null;
       void browser.storage.local.set({ syncRules: false });
     }

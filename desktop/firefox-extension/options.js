@@ -2,6 +2,7 @@
 const $ = (id) => document.getElementById(id);
 const LIST_KEYS = ["domains", "keywords", "regex"];
 const BOOL_KEYS = ["enabled", "scrubOnStartup", "caseSensitive", "wholeWord", "syncRules"];
+const SYNC_DATA_PERMISSIONS = ["browsingActivity", "searchTerms", "technicalAndInteraction"];
 
 function lines(id) {
   return $(id).value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
@@ -28,9 +29,9 @@ async function save(showMessage = true) {
   if (settings.syncRules) {
     let granted = false;
     try {
-      granted = await browser.permissions.contains({ data_collection: ["technicalAndInteraction"] });
+      granted = await browser.permissions.contains({ data_collection: SYNC_DATA_PERMISSIONS });
       if (!granted) {
-        granted = await browser.permissions.request({ data_collection: ["technicalAndInteraction"] });
+        granted = await browser.permissions.request({ data_collection: SYNC_DATA_PERMISSIONS });
       }
     } catch (_) {
       granted = false;

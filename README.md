@@ -28,7 +28,7 @@ This repository also contains **Fenix Privacy Desktop**, a Firefox WebExtension 
 - full-history scrub on demand, at startup and every 15+ minutes;
 - rules local by default, with opt-in Firefox `storage.sync` after Firefox's built-in consent;
 - no browsing data transmitted to a developer-controlled server;
-- GitHub Actions builds an unsigned test XPI automatically and can request an **unlisted Mozilla-signed XPI** when `AMO_API_KEY` / `AMO_API_SECRET` are configured.
+- GitHub Actions builds an unsigned test XPI automatically and can request an **unlisted Mozilla-signed XPI** when `AMO_API_KEY` / `AMO_API_SECRET` are configured. Signed desktop releases publish `desktop-updates.json`, so Firefox can self-update the extension from later GitHub Releases once this repository is public.
 
 Firefox Desktop requires Mozilla signing for normal permanent installation. See [`desktop/firefox-extension/README.md`](desktop/firefox-extension/README.md) and [`desktop/windows`](desktop/windows).
 
@@ -40,12 +40,13 @@ If Mozilla changes an integration point and the patch no longer applies exactly,
 
 ## Initial repository setup
 
-1. Add the four Android signing secrets described in [`docs/SIGNING.md`](docs/SIGNING.md).
-2. Run **Sync Firefox, build and release** once from Actions.
-3. Install `Fenix-Privacy-universal.apk` from the resulting Release and allow “Install unknown apps” for Fenix Privacy when Android asks.
-4. For a permanently installable Windows add-on, add `AMO_API_KEY` and `AMO_API_SECRET` and run **Build Firefox Desktop extension**; the workflow requests an unlisted Mozilla signature and publishes the signed XPI.
+1. Create a public repository named `Fenix-Privacy-Android` under the GitHub account that will publish releases.
+2. Upload this repository contents to `main`.
+3. Add the four signing secrets described in [`docs/SIGNING.md`](docs/SIGNING.md).
+4. Run **Sync Firefox, build and release** once from Actions.
+5. Install `Fenix-Privacy-universal.apk` from the resulting Release and allow “Install unknown apps” for Fenix Privacy when Android asks.
 
-After that, stable Firefox Android updates are handled by the workflow and the installed app's update checker.
+After that, stable Firefox updates are handled by the workflow and the installed app's update checker.
 
 ## Upstream currently pinned
 
@@ -56,7 +57,7 @@ These files are changed by CI only after a successful signed release.
 
 ## Important privacy scope
 
-The rules protect **Firefox browsing history and Firefox recent-search/history metadata** in the Android build, and Firefox browsing history in the desktop extension. They do not erase DNS logs, network/provider logs, search-engine account history, keyboard history, screenshots, downloads, bookmarks, open tabs, or history independently stored by another app/device.
+The rules protect **Firefox browsing history and Firefox recent-search/history metadata** in this build. They do not erase DNS logs, network/provider logs, search-engine account history, keyboard history, screenshots, downloads, bookmarks, open tabs, or history independently stored by another app/device.
 
 ## License and branding
 

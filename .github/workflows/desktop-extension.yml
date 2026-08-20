@@ -25,6 +25,22 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Stamp monotonic desktop version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="1.0.${GITHUB_RUN_NUMBER}"
+          node - "$VERSION" <<'NODE'
+          const fs = require('fs');
+          const file = 'desktop/firefox-extension/manifest.json';
+          const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+          manifest.version = process.argv[2];
+          fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+          NODE
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=desktop-v$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Install Mozilla web-ext
         run: npm install --global web-ext@10
 
@@ -47,29 +63,8 @@ jobs:
           test -n "$XPI"
           cp "$XPI" artifacts/Fenix-Privacy-Desktop-unsigned.xpi
 
-      - name: Read version
-        id: version
-        shell: bash
-        run: |
-          VERSION="$(node -p "require('./desktop/firefox-extension/manifest.json').version")"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=desktop-v$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Check existing signed release
-        id: existing
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Sign XPI with Mozilla AMO
         id: sign
-        if: steps.existing.outputs.exists != 'true'
         env:
           WEB_EXT_API_KEY: ${{ secrets.AMO_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET }}
@@ -108,4 +103,43 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" \
             artifacts/Fenix-Privacy-Desktop-Windows.xpi \
             --title "Fenix Privacy Desktop ${{ steps.version.outputs.version }}" \
-            --notes "Mozilla-signed Firefox Desktop extension for Windows. Selective domain/keyword/phrase/regex history suppression; rules sync between Firefox Desktop profiles through Firefox storage.sync when Add-ons Sync is enabled."
+            --notes "Mozilla-signed Firefox Desktop extension for Windows. Selective domain/keyword/phrase/regex history suppression; opt-in rule sync between Firefox Desktop profiles through Firefox storage.sync."
+
+      - name: Publish Firefox self-update manifest
+        if: steps.sign.outputs.signed == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA256="$(sha256sum artifacts/Fenix-Privacy-Desktop-Windows.xpi | awk '{print $1}')"
+          UPDATE_LINK="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/Fenix-Privacy-Desktop-Windows.xpi"
+          export SHA256 UPDATE_LINK
+          python3 - <<'PY'
+          import json, os
+          data = {
+              "addons": {
+                  "fenix-privacy-desktop@astropuzzo.github.io": {
+                      "updates": [{
+                          "version": os.environ["VERSION"],
+                          "update_link": os.environ["UPDATE_LINK"],
+                          "update_hash": "sha256:" + os.environ["SHA256"],
+                          "applications": {"gecko": {"strict_min_version": "140.0"}},
+                      }]
+                  }
+              }
+          }
+          with open("desktop-updates.json", "w", encoding="utf-8") as f:
+              json.dump(data, f, indent=2)
+              f.write("\n")
+          PY
+          # Remove the temporary version stamp before updating the source branch.
+          git checkout -- desktop/firefox-extension/manifest.json
+          git fetch origin main
+          git rebase origin/main
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add desktop-updates.json
+          git diff --cached --quiet || git commit -m "chore: update desktop add-on feed [skip ci]"
+          git push
