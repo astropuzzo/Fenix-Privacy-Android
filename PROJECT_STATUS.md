@@ -26,7 +26,7 @@ Last audited: 2026-08-20
 ## QA completed in this workspace
 
 - Python patch/release tools compile.
-- Six automated tests pass.
+- Seven automated Android patch/release tests pass.
 - XML overlays parse successfully.
 - GitHub Actions YAML parses successfully.
 - Stable and legacy `HistoryMetadataMiddleware` patch anchors are tested.
@@ -42,7 +42,7 @@ Android requires user confirmation for normal APK updates; a non-root/non-device
 ## Firefox Desktop / Windows
 
 - WebExtension source added under `desktop/firefox-extension`.
-- Manifest V3, Firefox 140+; declares `data_collection_permissions.required = ["none"]`.
+- Manifest V3, Firefox 140+; declares `data_collection_permissions.required = ["none"]` and optional consent for synced rule data.
 - History URL/domain/query matching plus title matching through `tabs.onUpdated`.
 - Startup and periodic history scrubbing.
 - Rule sync through Firefox `storage.sync` on desktop; local fallback if unavailable.
