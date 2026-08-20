@@ -13,6 +13,8 @@ const DEFAULTS = Object.freeze({
   totalRemoved: 0,
   lastRemovedAt: 0,
   lastScrubAt: 0,
+  lastMatchAt: 0,
+  lastError: "",
 });
 
 const ALARM_NAME = "fenix-privacy-history-scrub";
@@ -21,7 +23,9 @@ const SYNC_KEYS = Object.freeze([
   "enabled", "caseSensitive", "wholeWord", "domains", "keywords", "regex",
   "scrubOnStartup", "scrubEveryMinutes", "syncRules",
 ]);
+const DELETE_RETRY_DELAYS_MS = Object.freeze([0, 120, 450, 1200]);
 let cached = null;
+const pendingDeletes = new Map();
 
 function cleanLines(value) {
   const items = Array.isArray(value) ? value : String(value || "").split(/\r?\n/);
@@ -34,10 +38,12 @@ function normalizeSettings(raw = {}) {
   merged.keywords = cleanLines(merged.keywords);
   merged.regex = cleanLines(merged.regex);
   merged.scrubEveryMinutes = Math.max(15, Number(merged.scrubEveryMinutes) || 15);
+  merged.totalRemoved = Math.max(0, Number(merged.totalRemoved) || 0);
   return merged;
 }
 
 async function hasSyncConsent() {
+  if (!browser.permissions?.contains) return false;
   try {
     return await browser.permissions.contains({ data_collection: SYNC_DATA_PERMISSIONS });
   } catch (_) {
@@ -51,8 +57,9 @@ function pickSyncSettings(settings) {
 
 async function getSettings() {
   if (cached) return cached;
+
   const local = normalizeSettings(await browser.storage.local.get(DEFAULTS));
-  if (await hasSyncConsent()) {
+  if (local.syncRules && await hasSyncConsent()) {
     try {
       const remote = await browser.storage.sync.get(SYNC_KEYS);
       cached = normalizeSettings({ ...local, ...remote });
@@ -61,6 +68,7 @@ async function getSettings() {
       console.warn("Fenix Privacy: storage.sync read failed, using local settings", error);
     }
   }
+
   cached = local;
   return cached;
 }
@@ -68,6 +76,7 @@ async function getSettings() {
 async function persistSettings(settings) {
   cached = normalizeSettings(settings);
   await browser.storage.local.set(cached);
+
   if (cached.syncRules && await hasSyncConsent()) {
     try {
       await browser.storage.sync.set(pickSyncSettings(cached));
@@ -131,12 +140,14 @@ function buildHaystack(url, title) {
 
 function shouldSuppress(url, title, settings) {
   if (!settings.enabled || !url) return false;
+
   let hostname = "";
   try {
     hostname = new URL(url).hostname;
   } catch (_) {
     hostname = "";
   }
+
   if (settings.domains.some((rule) => domainMatches(hostname, rule))) return true;
 
   const haystack = buildHaystack(url, title);
@@ -153,31 +164,66 @@ function shouldSuppress(url, title, settings) {
   return false;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function updateDiagnostics(patch) {
+  try {
+    await browser.storage.local.set(patch);
+    if (cached) cached = normalizeSettings({ ...cached, ...patch });
+  } catch (_) {
+    // Diagnostics must never break protection.
+  }
+}
+
 async function recordRemoval(count = 1) {
   if (!count) return;
   const settings = await getSettings();
-  cached = normalizeSettings({
-    ...settings,
+  const patch = {
     totalRemoved: Number(settings.totalRemoved || 0) + count,
     lastRemovedAt: Date.now(),
-  });
-  await browser.storage.local.set({
-    totalRemoved: cached.totalRemoved,
-    lastRemovedAt: cached.lastRemovedAt,
-  });
+  };
+  await updateDiagnostics(patch);
 }
 
-async function removeUrlIfNeeded(url, title = "") {
+async function deleteUrlWithRetries(url) {
+  if (pendingDeletes.has(url)) return pendingDeletes.get(url);
+
+  const task = (async () => {
+    let hadSuccessfulDeleteCall = false;
+    let lastError = null;
+
+    for (const delay of DELETE_RETRY_DELAYS_MS) {
+      if (delay) await sleep(delay);
+      try {
+        await browser.history.deleteUrl({ url });
+        hadSuccessfulDeleteCall = true;
+      } catch (error) {
+        lastError = error;
+        console.warn("Fenix Privacy: unable to delete history URL", url, error);
+      }
+    }
+
+    if (lastError && !hadSuccessfulDeleteCall) {
+      await updateDiagnostics({ lastError: String(lastError?.message || lastError) });
+    }
+    return hadSuccessfulDeleteCall;
+  })().finally(() => pendingDeletes.delete(url));
+
+  pendingDeletes.set(url, task);
+  return task;
+}
+
+async function removeUrlIfNeeded(url, title = "", { countRemoval = false, source = "unknown" } = {}) {
   const settings = await getSettings();
   if (!shouldSuppress(url, title, settings)) return false;
-  try {
-    await browser.history.deleteUrl({ url });
-    await recordRemoval(1);
-    return true;
-  } catch (error) {
-    console.warn("Fenix Privacy: unable to delete history URL", url, error);
-    return false;
-  }
+
+  await updateDiagnostics({ lastMatchAt: Date.now(), lastError: "" });
+  const deleted = await deleteUrlWithRetries(url);
+  if (deleted && countRemoval) await recordRemoval(1);
+  console.debug(`Fenix Privacy: matched ${source}`, url);
+  return deleted;
 }
 
 async function scrubAllHistory() {
@@ -217,17 +263,13 @@ async function scrubAllHistory() {
   }
 
   const latest = await getSettings();
-  cached = normalizeSettings({
-    ...latest,
+  const patch = {
     totalRemoved: Number(latest.totalRemoved || 0) + removed,
     lastRemovedAt: removed ? Date.now() : latest.lastRemovedAt,
     lastScrubAt: Date.now(),
-  });
-  await browser.storage.local.set({
-    totalRemoved: cached.totalRemoved,
-    lastRemovedAt: cached.lastRemovedAt,
-    lastScrubAt: cached.lastScrubAt,
-  });
+    lastError: "",
+  };
+  await updateDiagnostics(patch);
   return { removed, scanned };
 }
 
@@ -239,19 +281,42 @@ async function scheduleAlarm() {
   }
 }
 
+async function initializeBackground({ scrub = false } = {}) {
+  try {
+    cached = null;
+    const settings = await getSettings();
+    await scheduleAlarm();
+    if (scrub && settings.scrubOnStartup) await scrubAllHistory();
+    await updateDiagnostics({ lastError: "" });
+  } catch (error) {
+    console.error("Fenix Privacy: background initialization failed", error);
+    await updateDiagnostics({ lastError: String(error?.message || error) });
+  }
+}
+
 browser.history.onVisited.addListener((item) => {
-  void removeUrlIfNeeded(item.url, item.title || "");
+  void removeUrlIfNeeded(item.url, item.title || "", { countRemoval: true, source: "history.onVisited" });
 });
 
 browser.webNavigation.onCommitted.addListener((details) => {
-  if (details.frameId === 0) void removeUrlIfNeeded(details.url, "");
+  if (details.frameId === 0) {
+    void removeUrlIfNeeded(details.url, "", { source: "webNavigation.onCommitted" });
+  }
 });
+
+if (browser.webNavigation.onHistoryStateUpdated) {
+  browser.webNavigation.onHistoryStateUpdated.addListener((details) => {
+    if (details.frameId === 0) {
+      void removeUrlIfNeeded(details.url, "", { source: "webNavigation.onHistoryStateUpdated" });
+    }
+  });
+}
 
 browser.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   const url = changeInfo.url || tab.url;
   const title = changeInfo.title || tab.title || "";
   if (url && (changeInfo.url || changeInfo.title || changeInfo.status === "complete")) {
-    void removeUrlIfNeeded(url, title);
+    void removeUrlIfNeeded(url, title, { source: "tabs.onUpdated" });
   }
 });
 
@@ -262,22 +327,15 @@ browser.alarms.onAlarm.addListener((alarm) => {
 browser.storage.onChanged.addListener((_changes, areaName) => {
   if (areaName === "sync" || areaName === "local") {
     cached = null;
-    void scheduleAlarm();
   }
 });
 
-browser.runtime.onInstalled.addListener(async () => {
-  const current = await getSettings();
-  await persistSettings(current);
-  await scheduleAlarm();
-  if (current.scrubOnStartup) await scrubAllHistory();
+browser.runtime.onInstalled.addListener(() => {
+  void initializeBackground({ scrub: true });
 });
 
-browser.runtime.onStartup.addListener(async () => {
-  cached = null;
-  const settings = await getSettings();
-  await scheduleAlarm();
-  if (settings.scrubOnStartup) await scrubAllHistory();
+browser.runtime.onStartup.addListener(() => {
+  void initializeBackground({ scrub: true });
 });
 
 if (browser.permissions?.onRemoved) {
@@ -291,16 +349,38 @@ if (browser.permissions?.onRemoved) {
 
 browser.runtime.onMessage.addListener(async (message) => {
   if (!message || typeof message !== "object") return undefined;
+
   if (message.type === "get-settings") return getSettings();
+
   if (message.type === "set-settings") {
     const updated = await persistSettings(message.settings || {});
     await scheduleAlarm();
     return updated;
   }
+
   if (message.type === "scrub-now") return scrubAllHistory();
+
   if (message.type === "test-rule") {
     const settings = normalizeSettings(message.settings || await getSettings());
     return { match: shouldSuppress(message.url || "", message.title || "", settings) };
   }
+
+  if (message.type === "health") {
+    const settings = await getSettings();
+    const manifest = browser.runtime.getManifest();
+    return {
+      ok: !settings.lastError,
+      version: manifest.version,
+      enabled: settings.enabled,
+      rules: settings.domains.length + settings.keywords.length + settings.regex.length,
+      lastMatchAt: settings.lastMatchAt,
+      lastError: settings.lastError,
+    };
+  }
+
   return undefined;
 });
+
+// Temporary add-ons and MV3 background restarts are not guaranteed to emit
+// onInstalled/onStartup at the moment this script starts. Initialize immediately.
+void initializeBackground({ scrub: true });
