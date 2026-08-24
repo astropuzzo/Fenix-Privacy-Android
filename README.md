@@ -28,7 +28,7 @@ This repository also contains **Fenix Privacy Desktop**, a Firefox WebExtension 
 - full-history scrub on demand, at startup and every 15+ minutes;
 - rules local by default, with opt-in Firefox `storage.sync` after Firefox's built-in consent;
 - no browsing data transmitted to a developer-controlled server;
-- GitHub Actions builds an unsigned test XPI automatically and can request an **unlisted Mozilla-signed XPI** when `AMO_API_KEY` / `AMO_API_SECRET` are configured. Signed desktop releases publish `desktop-updates.json`, so Firefox can self-update the extension from later GitHub Releases once this repository is public.
+- GitHub Actions builds an unsigned test XPI for pull requests, while every main-branch desktop release requires an **unlisted Mozilla-signed XPI** using `AMO_API_KEY` / `AMO_API_SECRET`. Unsigned release publication is blocked. Signed desktop releases publish `desktop-updates.json`, so Firefox can self-update the extension from later GitHub Releases once this repository is public.
 
 Firefox Desktop requires Mozilla signing for normal permanent installation. See [`desktop/firefox-extension/README.md`](desktop/firefox-extension/README.md) and [`desktop/windows`](desktop/windows).
 

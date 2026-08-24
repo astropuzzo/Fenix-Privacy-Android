@@ -32,9 +32,21 @@ function cleanLines(value) {
   return [...new Set(items.map((x) => String(x).trim()).filter(Boolean))];
 }
 
+function normalizeDomainRule(value) {
+  const raw = String(value || "").trim().replace(/^(\w+:\/\/)?\*\./i, "$1");
+  if (!raw) return "";
+
+  try {
+    const candidate = raw.includes("://") ? raw : `https://${raw}`;
+    return new URL(candidate).hostname.toLowerCase().replace(/^\.+|\.+$/g, "");
+  } catch (_) {
+    return raw.toLowerCase().replace(/^\.+|\.+$/g, "");
+  }
+}
+
 function normalizeSettings(raw = {}) {
   const merged = { ...DEFAULTS, ...raw };
-  merged.domains = cleanLines(merged.domains).map((d) => d.toLowerCase().replace(/^\*\./, "").replace(/^\.+|\.+$/g, ""));
+  merged.domains = cleanLines(merged.domains).map(normalizeDomainRule).filter(Boolean);
   merged.keywords = cleanLines(merged.keywords);
   merged.regex = cleanLines(merged.regex);
   merged.scrubEveryMinutes = Math.max(15, Number(merged.scrubEveryMinutes) || 15);

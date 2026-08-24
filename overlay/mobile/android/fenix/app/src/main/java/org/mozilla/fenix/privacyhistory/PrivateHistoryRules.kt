@@ -93,9 +93,10 @@ class PrivateHistoryRules(context: Context) {
     private fun isCaseSensitive(): Boolean = prefs.getBoolean(KEY_CASE_SENSITIVE, false)
     private fun normalizeCase(value: String): String = if (isCaseSensitive()) value else value.lowercase(Locale.ROOT)
     private fun parseLines(value: String): List<String> = value
-        .split('\n', ',', ';')
+        .lineSequence()
         .map(String::trim)
         .filter { it.isNotBlank() && !it.startsWith('#') }
+        .toList()
 
     companion object {
         const val KEY_ENABLED = "private_history_enabled"

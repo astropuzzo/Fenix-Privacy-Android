@@ -27,10 +27,16 @@ personal JWT credentials.
 Copy the pair into GitHub repository **Settings > Secrets and variables >
 Actions**:
 
-- AMO's **JWT issuer / API key** becomes `AMO_API_KEY`.
-- AMO's **JWT secret / API secret** becomes `AMO_API_SECRET`.
+- AMO's **JWT issuer** (the value beginning with `user:`) becomes
+  `AMO_API_KEY`.
+- AMO's complete **JWT secret** becomes `AMO_API_SECRET`.
 
 Always replace both values from the same newly generated pair. Never put the
 secret in a workflow file, issue, pull request, or build log. If `web-ext sign`
 reports `Error decoding signature`, the stored secret is malformed or does not
 match the stored key; regenerate the pair and update both repository secrets.
+
+Do not save the visually masked JWT value containing dots: GitHub needs the
+complete underlying secret. Main-branch and manual desktop releases fail closed
+if either secret is missing or AMO rejects it. Unsigned XPIs are produced only
+as pull-request test artifacts and are never published as installable releases.

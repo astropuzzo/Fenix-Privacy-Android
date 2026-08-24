@@ -79,7 +79,7 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
             summaryProvider = Preference.SummaryProvider<EditTextPreference> { preference ->
                 val count = preference.text
                     .orEmpty()
-                    .split('\n', ',', ';')
+                    .lineSequence()
                     .map(String::trim)
                     .count { it.isNotBlank() && !it.startsWith('#') }
 

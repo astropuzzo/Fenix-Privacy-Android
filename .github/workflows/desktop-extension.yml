@@ -27,7 +27,6 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       release_tag: ${{ steps.version.outputs.release_tag }}
       signed: ${{ steps.sign.outputs.signed }}
-      sign_status: ${{ steps.sign.outputs.status }}
 
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +40,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="1.0.${GITHUB_RUN_NUMBER}"
+          # AMO rejects an already-submitted version. Include the run attempt so
+          # rerunning a job after a downstream failure always submits a newer XPI.
+          VERSION="1.0.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           node - "$VERSION" <<'NODE'
           const fs = require('fs');
           const file = 'desktop/firefox-extension/manifest.json';
@@ -84,44 +85,56 @@ jobs:
         run: |
           set -euo pipefail
           echo "signed=false" >> "$GITHUB_OUTPUT"
-          echo "status=missing" >> "$GITHUB_OUTPUT"
 
           API_KEY="$(printf '%s' "${WEB_EXT_API_KEY:-}" | tr -d '\r\n')"
           API_SECRET="$(printf '%s' "${WEB_EXT_API_SECRET:-}" | tr -d '\r\n')"
 
           if [[ -z "$API_KEY" || -z "$API_SECRET" ]]; then
-            echo "::warning::AMO repository secrets are missing or empty. Building the unsigned DEV package."
-            exit 0
+            echo "::error::AMO signing is mandatory for main-branch releases. Add both AMO_API_KEY (JWT issuer) and AMO_API_SECRET (JWT secret) as repository Actions secrets."
+            exit 1
           fi
 
           echo "AMO credentials detected. Requesting an unlisted Mozilla signature."
+          rm -rf signed
           mkdir -p signed
           set +e
           web-ext sign \
             --source-dir desktop/firefox-extension \
             --artifacts-dir signed \
             --channel unlisted \
+            --approval-timeout 1800000 \
+            --no-input \
             --api-key "$API_KEY" \
             --api-secret "$API_SECRET" 2>&1 | tee "$RUNNER_TEMP/web-ext-sign.log"
           status=${PIPESTATUS[0]}
           set -e
 
           if ((status != 0)); then
-            echo "status=failed" >> "$GITHUB_OUTPUT"
             echo "::error::Mozilla AMO signing failed. The repository secrets were present; see the web-ext error above for the actual AMO/API failure."
             exit "$status"
           fi
 
-          SIGNED="$(find signed -maxdepth 1 -type f -name '*.xpi' -print -quit)"
-          test -n "$SIGNED" || {
-            echo "status=failed" >> "$GITHUB_OUTPUT"
-            echo "::error::web-ext reported success but no signed XPI was produced."
+          mapfile -t SIGNED_FILES < <(find signed -maxdepth 1 -type f -name '*.xpi' -print)
+          if (("${#SIGNED_FILES[@]}" != 1)); then
+            echo "::error::Expected exactly one Mozilla-signed XPI, found ${#SIGNED_FILES[@]}."
             exit 1
-          }
+          fi
+          SIGNED="${SIGNED_FILES[0]}"
+
+          unzip -tqq "$SIGNED"
+          if ! unzip -Z1 "$SIGNED" | grep -Eiq '^META-INF/(mozilla\.rsa|cose\.sig)$'; then
+            echo "::error::AMO returned an XPI without a recognizable Mozilla signature block."
+            exit 1
+          fi
+          if cmp -s "$SIGNED" artifacts/Fenix-Privacy-Desktop-unsigned.xpi; then
+            echo "::error::The AMO result is byte-identical to the unsigned package."
+            exit 1
+          fi
 
           cp "$SIGNED" artifacts/Fenix-Privacy-Desktop-Windows.xpi
+          rm -f artifacts/Fenix-Privacy-Desktop-unsigned.xpi
+          sha256sum artifacts/Fenix-Privacy-Desktop-Windows.xpi
           echo "signed=true" >> "$GITHUB_OUTPUT"
-          echo "status=signed" >> "$GITHUB_OUTPUT"
 
       - name: Upload XPI handoff
         uses: actions/upload-artifact@v4
@@ -202,7 +215,7 @@ jobs:
           path: final/*
 
   publish:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && needs.extension.outputs.signed == 'true'
     needs: [extension, windows-installer]
     runs-on: ubuntu-latest
 
@@ -220,30 +233,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.extension.outputs.version }}
           SIGNED: ${{ needs.extension.outputs.signed }}
-          SIGN_STATUS: ${{ needs.extension.outputs.sign_status }}
           RELEASE_TAG: ${{ needs.extension.outputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ "$SIGNED" == "true" ]]; then
+          [[ "$SIGNED" == "true" ]] || {
+            echo "Refusing to publish an unsigned Firefox package." >&2
+            exit 1
+          }
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              final/Fenix-Privacy-Desktop-Windows.xpi \
+              final/Fenix-Privacy-Desktop-Installer.exe \
+              --clobber
+          else
             gh release create "$RELEASE_TAG" \
               final/Fenix-Privacy-Desktop-Windows.xpi \
               final/Fenix-Privacy-Desktop-Installer.exe \
+              --prerelease \
               --title "Fenix Privacy Desktop $VERSION" \
               --notes "Mozilla-signed Firefox extension plus Windows installer EXE. The EXE launches the signed XPI in Firefox for the normal add-on confirmation."
-          else
-            DEV_TAG="desktop-dev-v$VERSION"
-            gh release create "$DEV_TAG" \
-              final/Fenix-Privacy-Desktop-unsigned.xpi \
-              final/Fenix-Privacy-Desktop-DEV-Installer.exe \
-              --prerelease \
-              --title "Fenix Privacy Desktop DEV $VERSION" \
-              --notes "Automatic development build. Mozilla signing was skipped because the AMO repository secrets were missing or empty (status: ${SIGN_STATUS:-missing}). Firefox Release will not permanently install the unsigned add-on."
           fi
 
       - name: Publish Firefox self-update manifest
-        if: needs.extension.outputs.signed == 'true'
         env:
           VERSION: ${{ needs.extension.outputs.version }}
           RELEASE_TAG: ${{ needs.extension.outputs.release_tag }}
@@ -283,5 +297,20 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add desktop-updates.json
-          git diff --cached --quiet || git commit -m "chore: update desktop add-on feed [skip ci]"
-          git push origin main
+          if git diff --cached --quiet; then
+            echo "Desktop update feed is already current."
+            exit 0
+          fi
+          git commit -m "chore: update desktop add-on feed [skip ci]"
+
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            if ((attempt == 3)); then
+              echo "Unable to publish desktop update feed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
