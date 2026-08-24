@@ -16,6 +16,6 @@ The extension does not transmit browsing data or rules to a developer-controlled
 
 ## Install on Windows
 
-A normal Firefox Release build requires Mozilla-signed add-ons. The GitHub workflow can create an unlisted signed XPI once repository secrets `AMO_API_KEY` and `AMO_API_SECRET` are configured. The signed XPI contains a self-distribution `update_url`; when this repository is public, Firefox reads `desktop-updates.json` and automatically installs later signed releases with higher versions. Until then, the unsigned XPI is suitable for temporary testing via `about:debugging` → **This Firefox** → **Load Temporary Add-on** → select `manifest.json` or the unsigned XPI.
+A normal Firefox Release build requires Mozilla-signed add-ons. Main-branch releases therefore fail unless repository secrets `AMO_API_KEY` (JWT issuer) and `AMO_API_SECRET` (complete JWT secret) produce an unlisted Mozilla-signed XPI. The workflow verifies that AMO returned a signature block before publishing. Unsigned XPIs exist only as pull-request test artifacts and can be loaded temporarily through `about:debugging`; they are never published as normal releases. The signed XPI contains a self-distribution `update_url`; when this repository is public, Firefox reads `desktop-updates.json` and automatically installs later signed versions.
 
 <!-- CI validation trigger: 2026-08-20T18:59+02:00 -->
