@@ -20,8 +20,9 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'android_overlay/**'
+      - 'overlay/**'
       - 'scripts/**'
+      - 'tests/**'
       - '.github/workflows/sync-build-release.yml'
       - 'SIGNING_CERT_SHA256'
   schedule:
@@ -43,6 +44,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Run patch and release tooling tests
+        run: python3 -m unittest discover -s tests -v
 
       - name: Find latest stable Firefox release
         id: upstream
@@ -105,20 +114,79 @@ jobs:
             echo "Building Android APK (event=$EVENT_NAME, force=$FORCE)."
           fi
 
-      - name: Validate Android signing secrets
+      - name: Validate Android signing key, passwords and certificate
         if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
         env:
-          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          STORE_PASS: ${{ secrets.ANDROID_STORE_PASSWORD }}
-          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$KEYSTORE" && test -n "$ALIAS" && test -n "$STORE_PASS" && test -n "$KEY_PASS" || {
-            echo "Missing Android signing secrets. See docs/SIGNING.md" >&2
+
+          missing=()
+          [[ -n "${ANDROID_KEYSTORE_BASE64:-}" ]] || missing+=(ANDROID_KEYSTORE_BASE64)
+          [[ -n "${ANDROID_KEY_ALIAS:-}" ]] || missing+=(ANDROID_KEY_ALIAS)
+          [[ -n "${ANDROID_STORE_PASSWORD:-}" ]] || missing+=(ANDROID_STORE_PASSWORD)
+          [[ -n "${ANDROID_KEY_PASSWORD:-}" ]] || missing+=(ANDROID_KEY_PASSWORD)
+          if (("${#missing[@]}" > 0)); then
+            echo "::error::Missing Android Actions secrets: ${missing[*]}. See docs/SIGNING.md."
+            exit 1
+          fi
+
+          KEYSTORE_PATH="$RUNNER_TEMP/fenix-privacy-preflight.jks"
+          PREFLIGHT_DIR="$RUNNER_TEMP/fenix-privacy-signing-preflight"
+          trap 'rm -rf "$KEYSTORE_PATH" "$PREFLIGHT_DIR"' EXIT
+
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" |
+            tr -d '[:space:]' |
+            base64 --decode > "$KEYSTORE_PATH"
+          [[ -s "$KEYSTORE_PATH" ]] || {
+            echo "::error::ANDROID_KEYSTORE_BASE64 did not decode to a non-empty JKS."
             exit 1
           }
+
+          KEY_ALIAS="$(printf '%s' "$ANDROID_KEY_ALIAS" | tr -d '\r\n')"
+          [[ -n "$KEY_ALIAS" ]] || {
+            echo "::error::ANDROID_KEY_ALIAS is empty after removing line breaks."
+            exit 1
+          }
+
+          keytool -list -v \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass "$ANDROID_STORE_PASSWORD" \
+            -alias "$KEY_ALIAS" >/dev/null
+
+          ACTUAL_CERT="$(
+            keytool -exportcert -rfc \
+              -keystore "$KEYSTORE_PATH" \
+              -storepass "$ANDROID_STORE_PASSWORD" \
+              -alias "$KEY_ALIAS" |
+              openssl x509 -noout -fingerprint -sha256 |
+              sed 's/.*=//' | tr '[:upper:]' '[:lower:]' | tr -d ':'
+          )"
+          EXPECTED_CERT="$(tr '[:upper:]' '[:lower:]' < SIGNING_CERT_SHA256 | tr -d '[:space:]:')"
+          [[ -n "$ACTUAL_CERT" && "$ACTUAL_CERT" == "$EXPECTED_CERT" ]] || {
+            echo "::error::The configured JKS certificate does not match SIGNING_CERT_SHA256."
+            exit 1
+          }
+
+          mkdir -p "$PREFLIGHT_DIR"
+          printf 'Fenix Privacy signing preflight\n' > "$PREFLIGHT_DIR/payload.txt"
+          (
+            cd "$PREFLIGHT_DIR"
+            jar --create --file unsigned.jar payload.txt
+            jarsigner \
+              -keystore "$KEYSTORE_PATH" \
+              -storepass "$ANDROID_STORE_PASSWORD" \
+              -keypass "$ANDROID_KEY_PASSWORD" \
+              -signedjar signed.jar \
+              unsigned.jar \
+              "$KEY_ALIAS" >/dev/null
+            jarsigner -verify signed.jar >/dev/null
+          )
+          echo "Android production signing material passed alias, password and certificate checks."
 
       - name: Fetch upstream Firefox
         id: firefox
@@ -291,9 +359,13 @@ jobs:
           for ((attempt = 1; attempt <= max_attempts; attempt++)); do
             log="$RUNNER_TEMP/fenix-gradle-attempt-$attempt.log"
             echo "::group::Fenix Gradle build attempt $attempt of $max_attempts"
+            refresh_args=()
+            if ((attempt > 1)); then
+              refresh_args+=(--refresh-dependencies)
+            fi
 
             set +e
-            ./mach gradle fenix:assembleRelease -PdisableDebugSigning 2>&1 | tee "$log"
+            ./mach gradle "${refresh_args[@]}" fenix:assembleRelease -PdisableDebugSigning 2>&1 | tee "$log"
             status=${PIPESTATUS[0]}
             set -e
 
@@ -302,8 +374,8 @@ jobs:
               exit 0
             fi
 
-            if ! grep -qi 'maven\.mozilla\.org' "$log" || \
-               ! grep -Eqi 'status code 5[0-9]{2}|service unavailable|could not (get|head)|connection (reset|refused)|timed? out|temporary failure|remote host terminated' "$log"; then
+            if ! grep -Eqi 'maven\.mozilla\.org|repo1\.maven\.org|plugins\.gradle\.org' "$log" || \
+               ! grep -Eqi 'status code (408|429|5[0-9]{2})|service unavailable|could not (get|head)|connection (reset|refused)|timed? out|temporary failure|remote host terminated' "$log"; then
               echo "Gradle failed for a non-transient reason; not retrying." >&2
               exit "$status"
             fi
@@ -318,16 +390,64 @@ jobs:
             sleep "$delay"
           done
 
-      - name: Show produced APKs
+      - name: Upload Gradle failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fenix-Privacy-Android-Gradle-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/fenix-gradle-attempt-*.log
+
+      - name: Locate and validate unsigned universal APK
+        id: apk
         if: steps.decision.outputs.build == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          find upstream -type f -name '*.apk' -print
-          test -n "$(find upstream -type f -name '*.apk' -print -quit)" || {
+
+          mapfile -t APKS < <(
+            find upstream -type f -path '*/fenix/app/outputs/apk/release/*.apk' -print
+          )
+          if (("${#APKS[@]}" == 0)); then
             echo "No APK was produced by fenix:assembleRelease" >&2
+            find upstream -type f -name '*.apk' -print >&2
+            exit 1
+          fi
+
+          printf 'Produced release APKs:\n'
+          printf '  %s\n' "${APKS[@]}"
+
+          mapfile -t UNIVERSAL_APKS < <(printf '%s\n' "${APKS[@]}" | grep -i 'universal' || true)
+          if (("${#UNIVERSAL_APKS[@]}" > 0)); then
+            APK="$(ls -S "${UNIVERSAL_APKS[@]}" | head -n1)"
+          else
+            APK="$(ls -S "${APKS[@]}" | head -n1)"
+            echo "::warning::No APK filename contained 'universal'; selecting the largest release APK: $APK"
+          fi
+
+          SDK_ROOT="$MOZBUILD_STATE_PATH/android-sdk-linux"
+          if [[ ! -d "$SDK_ROOT/build-tools" ]]; then
+            SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          fi
+          [[ -n "$SDK_ROOT" && -d "$SDK_ROOT/build-tools" ]] || {
+            echo "Android SDK build-tools not found" >&2
             exit 1
           }
+          BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          [[ -x "$BUILD_TOOLS/aapt" ]] || {
+            echo "Android aapt not found in $BUILD_TOOLS" >&2
+            exit 1
+          }
+
+          BADGING="$("$BUILD_TOOLS/aapt" dump badging "$APK")"
+          printf '%s\n' "$BADGING" | head -n1
+          printf '%s\n' "$BADGING" | grep -F "package: name='io.github.astropuzzo.fenixprivacy'"
+          printf '%s\n' "$BADGING" | grep -F "versionCode='$FENIX_PRIVACY_VERSION_CODE'"
+          printf '%s\n' "$BADGING" | grep -F "versionName='$FENIX_PRIVACY_VERSION_NAME'"
+
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "FENIX_PRIVACY_UNSIGNED_APK=$APK" >> "$GITHUB_ENV"
 
       - name: Upload PR smoke-test APKs
         if: steps.decision.outputs.build == 'true' && github.event_name == 'pull_request'
@@ -336,7 +456,7 @@ jobs:
           name: Fenix-Privacy-Android-PR-smoke-${{ github.event.pull_request.number }}
           retention-days: 7
           if-no-files-found: error
-          path: upstream/**/outputs/apk/release/*.apk
+          path: ${{ steps.apk.outputs.path }}
 
       - name: Upload unsigned release handoff
         if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
@@ -345,7 +465,7 @@ jobs:
           name: Fenix-Privacy-Android-unsigned-${{ env.FENIX_PRIVACY_VERSION_NAME }}
           retention-days: 3
           if-no-files-found: error
-          path: upstream/**/outputs/apk/release/*universal*.apk
+          path: ${{ steps.apk.outputs.path }}
 
       - name: Sign and verify APK
         if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
@@ -358,47 +478,49 @@ jobs:
         run: |
           set -euo pipefail
 
-          APK="$(find upstream -type f -path '*/fenix/app/outputs/apk/release/*' -name '*universal*.apk' -print -quit)"
-          if [[ -z "$APK" ]]; then
-            APK="$(find upstream -type f -name '*universal*.apk' -print -quit)"
-          fi
-          test -n "$APK" || {
-            echo "Universal APK not found" >&2
-            find upstream -type f -name '*.apk' -print >&2
+          APK="${FENIX_PRIVACY_UNSIGNED_APK:-}"
+          [[ -n "$APK" && -f "$APK" ]] || {
+            echo "Validated unsigned APK path is missing" >&2
             exit 1
           }
 
-          # Repository secrets are sometimes pasted with a trailing line
-          # break. A newline is part of a JKS alias, so remove only CR/LF.
           KEY_ALIAS="$(printf '%s' "$ANDROID_KEY_ALIAS" | tr -d '\r\n')"
-          test -n "$KEY_ALIAS" || {
+          [[ -n "$KEY_ALIAS" ]] || {
             echo "Android key alias is empty after removing line breaks" >&2
             exit 1
           }
 
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > /tmp/fenix-privacy-release.jks
+          KEYSTORE_PATH="$RUNNER_TEMP/fenix-privacy-release.jks"
+          ALIGNED_APK="$RUNNER_TEMP/Fenix-Privacy-aligned.apk"
+          trap 'rm -f "$KEYSTORE_PATH" "$ALIGNED_APK"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" |
+            tr -d '[:space:]' |
+            base64 --decode > "$KEYSTORE_PATH"
 
           SDK_ROOT="$MOZBUILD_STATE_PATH/android-sdk-linux"
           if [[ ! -d "$SDK_ROOT/build-tools" ]]; then
             SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           fi
-          test -n "$SDK_ROOT" && test -d "$SDK_ROOT/build-tools" || {
+          [[ -n "$SDK_ROOT" && -d "$SDK_ROOT/build-tools" ]] || {
             echo "Android SDK build-tools not found" >&2
             exit 1
           }
 
           BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
-          "$BUILD_TOOLS/zipalign" -p -f 4 "$APK" /tmp/Fenix-Privacy-aligned.apk
+          rm -f Fenix-Privacy-Android.apk
+          "$BUILD_TOOLS/zipalign" -p -f 4 "$APK" "$ALIGNED_APK"
+          "$BUILD_TOOLS/zipalign" -c -p -v 4 "$ALIGNED_APK"
           "$BUILD_TOOLS/apksigner" sign \
-            --ks /tmp/fenix-privacy-release.jks \
+            --ks "$KEYSTORE_PATH" \
             --ks-key-alias "$KEY_ALIAS" \
             --ks-pass "pass:$ANDROID_STORE_PASSWORD" \
             --key-pass "pass:$ANDROID_KEY_PASSWORD" \
             --out Fenix-Privacy-Android.apk \
-            /tmp/Fenix-Privacy-aligned.apk
+            "$ALIGNED_APK"
 
           VERIFY_OUTPUT="$("$BUILD_TOOLS/apksigner" verify --verbose --print-certs Fenix-Privacy-Android.apk)"
           printf '%s\n' "$VERIFY_OUTPUT"
+          printf '%s\n' "$VERIFY_OUTPUT" | grep -F 'Verified'
 
           ACTUAL_CERT="$(
             printf '%s\n' "$VERIFY_OUTPUT" |
@@ -412,7 +534,12 @@ jobs:
             exit 1
           }
 
-          rm -f /tmp/fenix-privacy-release.jks /tmp/Fenix-Privacy-aligned.apk
+          BADGING="$("$BUILD_TOOLS/aapt" dump badging Fenix-Privacy-Android.apk)"
+          printf '%s\n' "$BADGING" | head -n1
+          printf '%s\n' "$BADGING" | grep -F "package: name='io.github.astropuzzo.fenixprivacy'"
+          printf '%s\n' "$BADGING" | grep -F "versionCode='$FENIX_PRIVACY_VERSION_CODE'"
+          printf '%s\n' "$BADGING" | grep -F "versionName='$FENIX_PRIVACY_VERSION_NAME'"
+          sha256sum Fenix-Privacy-Android.apk
 
       - name: Create update manifest
         if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
@@ -441,11 +568,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "$RELEASE_TAG" \
-            Fenix-Privacy-Android.apk \
-            update.json \
-            --title "Fenix Privacy Android $FENIX_PRIVACY_VERSION_NAME" \
-            --notes "Automatically built from Mozilla Firefox ${FENIX_PRIVACY_UPSTREAM_REF} (${FENIX_PRIVACY_UPSTREAM_REVISION}). Signed APK + update manifest."
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              Fenix-Privacy-Android.apk \
+              update.json \
+              --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              Fenix-Privacy-Android.apk \
+              update.json \
+              --latest \
+              --title "Fenix Privacy Android $FENIX_PRIVACY_VERSION_NAME" \
+              --notes "Automatically built from Mozilla Firefox ${FENIX_PRIVACY_UPSTREAM_REF} (${FENIX_PRIVACY_UPSTREAM_REVISION}). Production-signed APK; certificate and package identity verified in CI."
+          fi
+
+          ASSETS="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          printf '%s\n' "$ASSETS"
+          grep -Fxq 'Fenix-Privacy-Android.apk' <<< "$ASSETS"
+          grep -Fxq 'update.json' <<< "$ASSETS"
 
       - name: Record successfully released upstream
         if: steps.decision.outputs.build == 'true' && github.event_name != 'pull_request'
@@ -457,5 +597,20 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add UPSTREAM_REF UPSTREAM_REVISION
-          git diff --cached --quiet || git commit -m "chore: track $FENIX_PRIVACY_UPSTREAM_REF [skip ci]"
-          git push
+          if git diff --cached --quiet; then
+            echo "Upstream release pointer is already current."
+            exit 0
+          fi
+          git commit -m "chore: track $FENIX_PRIVACY_UPSTREAM_REF [skip ci]"
+
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            if ((attempt == 3)); then
+              echo "Unable to record released upstream after 3 attempts." >&2
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
