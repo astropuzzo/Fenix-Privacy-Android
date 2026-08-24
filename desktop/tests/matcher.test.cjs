@@ -62,6 +62,7 @@ function settings(extra = {}) {
 
 assert.equal(context.shouldSuppress("https://example.com/a", "", settings({ domains: ["example.com"] })), true);
 assert.equal(context.shouldSuppress("https://deep.sub.example.com/a", "", settings({ domains: ["*.example.com"] })), true);
+assert.equal(context.shouldSuppress("https://deep.sub.example.com/a", "", settings({ domains: ["HTTPS://*.Example.COM/path"] })), true);
 assert.equal(context.shouldSuppress("https://notexample.com/a", "", settings({ domains: ["example.com"] })), false);
 assert.equal(context.shouldSuppress("https://search.test/?q=very%20secret", "", settings({ keywords: ["very secret"] })), true);
 assert.equal(context.shouldSuppress("https://search.test/", "A secret document", settings({ keywords: ["secret"] })), true);
