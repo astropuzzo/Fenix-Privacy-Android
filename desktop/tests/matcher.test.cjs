@@ -78,7 +78,7 @@ assert.equal(context.shouldSuppress("https://search.test/?q=very%20secret", "", 
 assert.equal(context.shouldSuppress("https://search.test/", "A secret document", settings({ keywords: ["secret"] })), true);
 assert.equal(context.shouldSuppress("https://search.test/?q=Secret", "", settings({ keywords: ["secret"], caseSensitive: true })), false);
 assert.equal(context.shouldSuppress("https://search.test/?q=secretary", "", settings({ keywords: ["secret"], wholeWord: true })), false);
-assert.equal(context.shouldSuppress("https://search.test/?q=secret", "", settings({ keywords: ["secret"], wholeWord: true })), true);
+assert.equal(context.shouldSuppress("https://search.test/?q=secret", "", settings({ keywords: ["secret"], wholeWord: true })), true);\nassert.equal(context.shouldSuppress("https://test/", "A very secret page", settings({ keywords: ["very secret"], wholeWord: true })), true);\nassert.equal(context.shouldSuppress("https://test/", "A very secretary page", settings({ keywords: ["very secret"], wholeWord: true })), false);
 assert.equal(context.shouldSuppress("https://test/abc123", "", settings({ regex: ["abc\\d+"] })), true);
 assert.equal(context.shouldSuppress("https://test/fooo", "", settings({ regex: ["foo{1,3}"] })), true);
 assert.equal(context.shouldSuppress("https://test/alpha;beta", "", settings({ regex: ["alpha;beta"] })), true);
