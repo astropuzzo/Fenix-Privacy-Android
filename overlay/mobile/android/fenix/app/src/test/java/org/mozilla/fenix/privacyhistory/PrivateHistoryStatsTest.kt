@@ -28,6 +28,7 @@ class PrivateHistoryStatsTest {
     @After
     fun tearDown() {
         stats.reset()
+        testContext.getSharedPreferences("site_session_test", Context.MODE_PRIVATE).edit().clear().commit()
     }
 
     @Test
@@ -68,6 +69,5 @@ class PrivateHistoryStatsTest {
 
         assertEquals(0L, stats.snapshot().total)
         assertEquals("keep-me", unrelated.getString("session", null))
-        unrelated.edit().clear().commit()
     }
 }
