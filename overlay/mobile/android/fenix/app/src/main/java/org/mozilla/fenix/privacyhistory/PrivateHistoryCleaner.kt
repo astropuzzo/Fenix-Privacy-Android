@@ -14,7 +14,7 @@ class PrivateHistoryCleaner(
     suspend fun purgeMatchingHistory(): Int {
         if (!rules.enabled) return 0
 
-        val urls = historyStorage
+        val visitUrls = historyStorage
             .getDetailedVisits(start = 0L, end = Long.MAX_VALUE)
             .asSequence()
             .filter { rules.shouldBlockVisit(it.url, it.title) }
@@ -32,9 +32,14 @@ class PrivateHistoryCleaner(
                 )
             }
 
-        urls.forEach { historyStorage.deleteVisitsFor(it) }
-        metadata.forEach { historyStorage.deleteHistoryMetadata(it.key) }
+        // A search term may be present only in metadata. Its URL still has a Places visit,
+        // so always purge both stores for every matching URL, including entries from Sync.
+        val urls = (visitUrls + metadata.map { it.key.url }).distinct()
+        urls.forEach { url ->
+            historyStorage.deleteVisitsFor(url)
+            historyStorage.deleteHistoryMetadataForUrl(url)
+        }
 
-        return urls.size + metadata.size
+        return urls.size
     }
 }
