@@ -117,6 +117,63 @@ class ToolingTests(unittest.TestCase):
             patched = path.read_text(encoding="utf-8")
             self.assertIn("private val shouldSuppress:", patched)
 
+    def test_core_patch_wires_aggregate_privacy_stats(self):
+        module = load_module(
+            "fenix_privacy_patcher_core_stats",
+            ROOT / "scripts/apply_fenix_privacy.py",
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            path = target / (
+                "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/"
+                "components/Core.kt"
+            )
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                "import mozilla.components.feature.session.HistoryDelegate\n"
+                "import org.mozilla.fenix.perf.lazyMonitored\n"
+                "class Core(\n"
+                "    private val context: Context,\n"
+                ") {\n"
+                "    /**\n"
+                "     * The browser engine component\n"
+                "     */\n"
+                "    val engine = Engine(\n"
+                "        historyTrackingDelegate = HistoryDelegate(lazyHistoryStorage),\n"
+                "    )\n"
+                "    val store = Store(\n"
+                "        HistoryMetadataMiddleware(historyMetadataService),\n"
+                "    )\n"
+                "}\n",
+                encoding="utf-8",
+            )
+
+            module.patch_core(target)
+
+            patched = path.read_text(encoding="utf-8")
+            self.assertIn("PrivateHistoryStats", patched)
+            self.assertIn("val privateHistoryStats by lazyMonitored", patched)
+            self.assertIn("privateHistoryStats.recordRemovedAfterMatch(url)", patched)
+            self.assertIn("privateHistoryPurger.purgeAsync(url)", patched)
+
+    def test_history_privacy_overlay_does_not_manipulate_site_state(self):
+        source_dir = (
+            ROOT
+            / "overlay/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/"
+            / "privacyhistory"
+        )
+        source = "\n".join(path.read_text(encoding="utf-8") for path in source_dir.rglob("*.kt"))
+        forbidden_calls = (
+            "clearCookies(",
+            "removeAllCookies(",
+            "deleteAllCookies(",
+            "clearSiteData(",
+            "clearCache(",
+        )
+        for call in forbidden_calls:
+            with self.subTest(call=call):
+                self.assertNotIn(call, source)
+
     def test_public_android_release_confirmation_uses_release_date(self):
         stable = load_module(
             "fenix_privacy_stable_ref",
