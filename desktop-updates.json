@@ -3,9 +3,9 @@
     "fenix-privacy-desktop@astropuzzo.github.io": {
       "updates": [
         {
-          "version": "1.0.35.1",
-          "update_link": "https://github.com/astropuzzo/Fenix-Privacy-Android/releases/download/desktop-v1.0.35.1/Fenix-Privacy-Desktop-Windows.xpi",
-          "update_hash": "sha256:29f068c1f377fb6549c928a11cb6d43ed3b013f6520454849626fcecd8bcf311",
+          "version": "1.0.38.1",
+          "update_link": "https://github.com/astropuzzo/Fenix-Privacy-Android/releases/download/desktop-v1.0.38.1/Fenix-Privacy-Desktop.xpi",
+          "update_hash": "sha256:6c793df88e731e9cc0f67ad401a416396e0f32bf1b32a407418656a19fc2ae5f",
           "applications": {
             "gecko": {
               "strict_min_version": "142.0"
