@@ -81,6 +81,16 @@ class PrivateHistoryRulesTest {
     }
 
     @Test
+    fun `whole word mode also enforces phrase boundaries`() {
+        putString(PrivateHistoryRules.KEY_KEYWORDS, "very secret")
+        putBoolean(PrivateHistoryRules.KEY_WHOLE_WORDS, true)
+        val rules = PrivateHistoryRules(testContext)
+
+        assertTrue(rules.shouldBlockTitle("A very secret page"))
+        assertFalse(rules.shouldBlockTitle("A very secretary page"))
+    }
+
+    @Test
     fun `regex lines preserve quantifier commas and semicolons while invalid rules are ignored`() {
         putString(
             PrivateHistoryRules.KEY_REGEX,
