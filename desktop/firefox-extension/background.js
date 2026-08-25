@@ -336,9 +336,14 @@ browser.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) void scrubAllHistory();
 });
 
-browser.storage.onChanged.addListener((_changes, areaName) => {
-  if (areaName === "sync" || areaName === "local") {
-    cached = null;
+browser.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "sync" && areaName !== "local") return;
+
+  cached = null;
+  const schedulingKeys = new Set(["enabled", "scrubEveryMinutes", "syncRules"]);
+  if (Object.keys(changes || {}).some((key) => schedulingKeys.has(key))) {
+    // A remote storage.sync change must update alarms without waiting for restart.
+    void scheduleAlarm();
   }
 });
 
