@@ -53,6 +53,10 @@ Every day GitHub Actions checks Mozilla's `FIREFOX_*_RELEASE` tags and verifies 
 
 If Mozilla changes an integration point and the patch no longer applies exactly, CI fails **before** a release is created. This deliberately favors no update over a broken privacy build.
 
+The Android check runs every day at **04:23 UTC** and can also be started manually. A new Mozilla stable tag is recorded in `UPSTREAM_REF` only after the ARM64 APK, signing certificate, package identity, Gecko libraries, update manifest and GitHub Release have all passed.
+
+Desktop is a Mozilla-signed WebExtension rather than a forked Firefox binary, so it is rebuilt when the extension changes, not for every Firefox source tag. The same signed XPI works on Windows, macOS and Linux; the rolling production release always keeps it beside the newest Android build.
+
 ## Initial repository setup
 
 1. Create a public repository named `Fenix-Privacy-Android` under the GitHub account that will publish releases.
