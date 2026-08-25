@@ -4,6 +4,15 @@
     <string name="private_history_settings_summary">Non salvare mai nella cronologia determinati siti o parole</string>
     <string name="private_history_enabled_title">Abilita regole cronologia privata</string>
     <string name="private_history_enabled_summary">Quando la corrispondenza è già riconoscibile dall’URL, la visita viene bloccata prima della scrittura.</string>
+    <string name="private_history_stats_category">Statistiche protezione</string>
+    <string name="private_history_stats_title">🛡️ Contatore privacy</string>
+    <string name="private_history_stats_empty">0 totali · 0 prima del salvataggio · 0 dopo titolo/ricerca · 0 dalla pulizia</string>
+    <string name="private_history_stats_summary">%1$d totali · %2$d prima del salvataggio · %3$d dopo titolo/ricerca · %4$d dalla pulizia</string>
+    <string name="private_history_stats_reset_title">Azzera il contatore privacy</string>
+    <string name="private_history_stats_reset_summary">Cancella soltanto questi numeri aggregati.</string>
+    <string name="private_history_stats_reset_done">Contatore privacy azzerato</string>
+    <string name="private_history_cookies_title">Cookie e accessi restano salvati</string>
+    <string name="private_history_cookies_summary">Queste regole agiscono solo su cronologia e metadati delle ricerche recenti. Non cancellano cookie, sessioni, accessi, cache o dati dei siti.</string>
     <string name="private_history_rules_category">Blacklist</string>
     <string name="private_history_domains_title">Domini bloccati</string>
     <string name="private_history_domains_dialog">Un dominio per riga</string>
