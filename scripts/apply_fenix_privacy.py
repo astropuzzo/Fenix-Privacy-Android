@@ -50,28 +50,38 @@ def patch_core(target: Path) -> None:
     imports = (
         anchor
         + "import org.mozilla.fenix.privacyhistory.PrivateHistoryDelegate\n"
+        + "import org.mozilla.fenix.privacyhistory.PrivateHistoryPurger\n"
         + "import org.mozilla.fenix.privacyhistory.PrivateHistoryRules\n"
     )
     s = replace_once(s, anchor, imports, "Core privacy imports")
     class_anchor = ") {\n    /**\n     * The browser engine component"
     class_repl = (
         ") {\n"
-        "    val privateHistoryRules by lazyMonitored { PrivateHistoryRules(context) }\n\n"
+        "    val privateHistoryRules by lazyMonitored { PrivateHistoryRules(context) }\n"
+        "    val privateHistoryPurger by lazyMonitored { PrivateHistoryPurger(lazyHistoryStorage) }\n\n"
         "    /**\n     * The browser engine component"
     )
     s = replace_once(s, class_anchor, class_repl, "Core rules property")
     s = replace_once(
         s,
         "historyTrackingDelegate = HistoryDelegate(lazyHistoryStorage),",
-        "historyTrackingDelegate = PrivateHistoryDelegate(lazyHistoryStorage, privateHistoryRules),",
+        "historyTrackingDelegate = PrivateHistoryDelegate(\n"
+        "                lazyHistoryStorage,\n"
+        "                privateHistoryRules,\n"
+        "                privateHistoryPurger,\n"
+        "            ),",
         "Core history delegate",
     )
     s = replace_once(
         s,
         "HistoryMetadataMiddleware(historyMetadataService),",
-        "HistoryMetadataMiddleware(historyMetadataService) { url, title, searchTerm ->\n"
-        "                    privateHistoryRules.shouldBlockVisit(url, title, searchTerm)\n"
-        "                },",
+        "HistoryMetadataMiddleware(\n"
+        "                    historyMetadataService,\n"
+        "                    shouldSuppress = { url, title, searchTerm ->\n"
+        "                        privateHistoryRules.shouldBlockVisit(url, title, searchTerm)\n"
+        "                    },\n"
+        "                    onSuppressed = privateHistoryPurger::purgeAsync,\n"
+        "                ),",
         "Core history metadata middleware",
     )
     write(path, s)
@@ -102,17 +112,44 @@ def patch_history_metadata(target: Path) -> None:
         "class HistoryMetadataMiddleware(\n"
         "    private val historyMetadataService: HistoryMetadataService,\n"
         "    private val shouldSuppress: (url: String, title: String?, searchTerm: String?) -> Boolean = { _, _, _ -> false },\n"
+        "    private val onSuppressed: (url: String) -> Unit = {},\n"
         ") : Middleware<BrowserState, BrowserAction> {"
     )
     s = replace_once(s, old, new, "HistoryMetadataMiddleware constructor")
     anchor = "        val key = historyMetadataService.createMetadata(tab, searchTerm, referrerUrl)"
     replacement = (
         "        if (shouldSuppress(tab.content.url, tab.content.title, searchTerm)) {\n"
+        "            onSuppressed(tab.content.url)\n"
         "            return\n"
         "        }\n\n"
         + anchor
     )
     s = replace_once(s, anchor, replacement, "HistoryMetadata suppression")
+
+    title_anchor = (
+        "            is MediaSessionAction.UpdateMediaMetadataAction -> {\n"
+        "                store.state.findNormalTab(action.tabId)?.let { tab ->\n"
+        "                    createHistoryMetadata(store, tab)\n"
+        "                }\n"
+        "            }\n"
+        "            else -> {\n"
+    )
+    title_replacement = (
+        "            is MediaSessionAction.UpdateMediaMetadataAction -> {\n"
+        "                store.state.findNormalTab(action.tabId)?.let { tab ->\n"
+        "                    createHistoryMetadata(store, tab)\n"
+        "                }\n"
+        "            }\n"
+        "            is ContentAction.UpdateTitleAction -> {\n"
+        "                store.state.findNormalTab(action.sessionId)?.let { tab ->\n"
+        "                    if (shouldSuppress(tab.content.url, action.title, tab.content.searchTerms)) {\n"
+        "                        onSuppressed(tab.content.url)\n"
+        "                    }\n"
+        "                }\n"
+        "            }\n"
+        "            else -> {\n"
+    )
+    s = replace_once(s, title_anchor, title_replacement, "HistoryMetadata title suppression")
     write(path, s)
 
 
