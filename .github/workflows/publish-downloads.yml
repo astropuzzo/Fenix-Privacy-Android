@@ -1,0 +1,205 @@
+name: Publish Production Downloads
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-downloads.yml'
+  workflow_run:
+    workflows:
+      - Build Android APK
+      - Build Desktop XPI and Windows EXE
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fenix-privacy-production-downloads
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.event != 'pull_request')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve latest successful production releases
+        id: releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RELEASES="$(gh release list --limit 100 --json tagName,isDraft,publishedAt)"
+          ANDROID_TAG="$(
+            jq -r '[.[] | select(.isDraft == false and (.tagName | test("^v[0-9]")))] | first | .tagName // empty' \
+              <<< "$RELEASES"
+          )"
+          DESKTOP_TAG="$(
+            jq -r '[.[] | select(.isDraft == false and (.tagName | test("^desktop-v[0-9]")))] | first | .tagName // empty' \
+              <<< "$RELEASES"
+          )"
+
+          [[ -n "$ANDROID_TAG" ]] || {
+            echo "No production Android release was found." >&2
+            exit 1
+          }
+          [[ -n "$DESKTOP_TAG" ]] || {
+            echo "No Mozilla-signed desktop release was found." >&2
+            exit 1
+          }
+
+          echo "android_tag=$ANDROID_TAG" >> "$GITHUB_OUTPUT"
+          echo "desktop_tag=$DESKTOP_TAG" >> "$GITHUB_OUTPUT"
+          echo "Android source: $ANDROID_TAG"
+          echo "Desktop source: $DESKTOP_TAG"
+
+      - name: Download and normalize production assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANDROID_TAG: ${{ steps.releases.outputs.android_tag }}
+          DESKTOP_TAG: ${{ steps.releases.outputs.desktop_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf bundle
+          mkdir -p bundle
+
+          gh release download "$ANDROID_TAG" \
+            --pattern 'Fenix-Privacy-Android.apk' \
+            --pattern 'update.json' \
+            --dir bundle
+
+          if ! gh release download "$DESKTOP_TAG" \
+            --pattern 'Fenix-Privacy-Desktop.xpi' \
+            --dir bundle; then
+            gh release download "$DESKTOP_TAG" \
+              --pattern 'Fenix-Privacy-Desktop-Windows.xpi' \
+              --dir bundle
+            mv bundle/Fenix-Privacy-Desktop-Windows.xpi \
+              bundle/Fenix-Privacy-Desktop.xpi
+          fi
+
+          gh release download "$DESKTOP_TAG" \
+            --pattern 'Fenix-Privacy-Desktop-Installer.exe' \
+            --dir bundle
+
+          test -s bundle/Fenix-Privacy-Android.apk
+          test -s bundle/update.json
+          test -s bundle/Fenix-Privacy-Desktop.xpi
+          test -s bundle/Fenix-Privacy-Desktop-Installer.exe
+
+      - name: Verify downloaded assets and create release index
+        env:
+          ANDROID_TAG: ${{ steps.releases.outputs.android_tag }}
+          DESKTOP_TAG: ${{ steps.releases.outputs.desktop_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 scripts/verify_android_apk.py \
+            bundle/Fenix-Privacy-Android.apk --abi arm64-v8a
+          unzip -tqq bundle/Fenix-Privacy-Desktop.xpi
+          unzip -Z1 bundle/Fenix-Privacy-Desktop.xpi |
+            grep -Eiq '^META-INF/(mozilla\.rsa|cose\.sig)$'
+
+          python3 - <<'PY'
+          import datetime
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("bundle")
+          names = [
+              "Fenix-Privacy-Android.apk",
+              "update.json",
+              "Fenix-Privacy-Desktop.xpi",
+              "Fenix-Privacy-Desktop-Installer.exe",
+          ]
+
+          hashes = {
+              name: hashlib.sha256((root / name).read_bytes()).hexdigest()
+              for name in names
+          }
+          update = json.loads((root / "update.json").read_text(encoding="utf-8"))
+          if update.get("sha256") != hashes["Fenix-Privacy-Android.apk"]:
+              raise SystemExit("update.json does not match the production APK")
+
+          index = {
+              "generatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "android": {
+                  "sourceTag": os.environ["ANDROID_TAG"],
+                  "versionName": update.get("versionName"),
+                  "versionCode": update.get("versionCode"),
+                  "upstreamRef": update.get("upstreamRef"),
+                  "upstreamRevision": update.get("upstreamRevision"),
+              },
+              "desktop": {"sourceTag": os.environ["DESKTOP_TAG"]},
+              "sha256": hashes,
+          }
+          (root / "release-index.json").write_text(
+              json.dumps(index, indent=2) + "\n", encoding="utf-8"
+          )
+          (root / "SHA256SUMS.txt").write_text(
+              "".join(f"{hashes[name]}  {name}\n" for name in names),
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Publish rolling production download release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANDROID_TAG: ${{ steps.releases.outputs.android_tag }}
+          DESKTOP_TAG: ${{ steps.releases.outputs.desktop_tag }}
+          DOWNLOAD_TAG: production-downloads
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/production-downloads-notes.md" <<EOF
+          Current tested production downloads, refreshed automatically after every successful Android or Desktop release.
+
+          - Android ARM64 APK: built from Mozilla Firefox release \`$ANDROID_TAG\`
+          - Firefox Desktop XPI: Mozilla-signed and compatible with Windows, macOS and Linux (source \`$DESKTOP_TAG\`)
+          - Windows: installer EXE containing the same Mozilla-signed XPI
+
+          SHA-256 hashes and machine-readable source/version metadata are included.
+          EOF
+
+          if gh release view "$DOWNLOAD_TAG" >/dev/null 2>&1; then
+            gh release delete-asset "$DOWNLOAD_TAG" \
+              Fenix-Privacy-Desktop-Windows.xpi --yes >/dev/null 2>&1 || true
+            gh release upload "$DOWNLOAD_TAG" bundle/* --clobber
+            gh release edit "$DOWNLOAD_TAG" \
+              --title 'Fenix Privacy — Production Downloads' \
+              --notes-file "$RUNNER_TEMP/production-downloads-notes.md" \
+              --latest
+          else
+            gh release create "$DOWNLOAD_TAG" bundle/* \
+              --target main \
+              --title 'Fenix Privacy — Production Downloads' \
+              --notes-file "$RUNNER_TEMP/production-downloads-notes.md" \
+              --latest
+          fi
+
+          ASSETS="$(gh release view "$DOWNLOAD_TAG" --json assets --jq '.assets[].name')"
+          printf '%s\n' "$ASSETS"
+          for required in \
+            Fenix-Privacy-Android.apk \
+            update.json \
+            Fenix-Privacy-Desktop.xpi \
+            Fenix-Privacy-Desktop-Installer.exe \
+            SHA256SUMS.txt \
+            release-index.json; do
+            grep -Fxq "$required" <<< "$ASSETS"
+          done
