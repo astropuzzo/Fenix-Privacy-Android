@@ -52,12 +52,14 @@ def patch_core(target: Path) -> None:
         + "import org.mozilla.fenix.privacyhistory.PrivateHistoryDelegate\n"
         + "import org.mozilla.fenix.privacyhistory.PrivateHistoryPurger\n"
         + "import org.mozilla.fenix.privacyhistory.PrivateHistoryRules\n"
+        + "import org.mozilla.fenix.privacyhistory.PrivateHistoryStats\n"
     )
     s = replace_once(s, anchor, imports, "Core privacy imports")
     class_anchor = ") {\n    /**\n     * The browser engine component"
     class_repl = (
         ") {\n"
         "    val privateHistoryRules by lazyMonitored { PrivateHistoryRules(context) }\n"
+        "    val privateHistoryStats by lazyMonitored { PrivateHistoryStats(context) }\n"
         "    val privateHistoryPurger by lazyMonitored { PrivateHistoryPurger(lazyHistoryStorage) }\n\n"
         "    /**\n     * The browser engine component"
     )
@@ -69,6 +71,7 @@ def patch_core(target: Path) -> None:
         "                lazyHistoryStorage,\n"
         "                privateHistoryRules,\n"
         "                privateHistoryPurger,\n"
+        "                privateHistoryStats,\n"
         "            ),",
         "Core history delegate",
     )
@@ -80,7 +83,10 @@ def patch_core(target: Path) -> None:
         "                    shouldSuppress = { url, title, searchTerm ->\n"
         "                        privateHistoryRules.shouldBlockVisit(url, title, searchTerm)\n"
         "                    },\n"
-        "                    onSuppressed = privateHistoryPurger::purgeAsync,\n"
+        "                    onSuppressed = { url ->\n"
+        "                        privateHistoryStats.recordRemovedAfterMatch(url)\n"
+        "                        privateHistoryPurger.purgeAsync(url)\n"
+        "                    },\n"
         "                ),",
         "Core history metadata middleware",
     )
