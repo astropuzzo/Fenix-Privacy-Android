@@ -10,6 +10,33 @@
         app:iconSpaceReserved="false" />
 
     <androidx.preference.PreferenceCategory
+        android:title="@string/private_history_stats_category"
+        android:layout="@layout/preference_category_no_icon_style">
+
+        <androidx.preference.Preference
+            android:key="private_history_stats_counter"
+            android:persistent="false"
+            android:selectable="false"
+            android:title="@string/private_history_stats_title"
+            android:summary="@string/private_history_stats_empty"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
+            android:key="private_history_stats_reset"
+            android:persistent="false"
+            android:title="@string/private_history_stats_reset_title"
+            android:summary="@string/private_history_stats_reset_summary"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
+            android:persistent="false"
+            android:selectable="false"
+            android:title="@string/private_history_cookies_title"
+            android:summary="@string/private_history_cookies_summary"
+            app:iconSpaceReserved="false" />
+    </androidx.preference.PreferenceCategory>
+
+    <androidx.preference.PreferenceCategory
         android:title="@string/private_history_rules_category"
         android:layout="@layout/preference_category_no_icon_style">
 
