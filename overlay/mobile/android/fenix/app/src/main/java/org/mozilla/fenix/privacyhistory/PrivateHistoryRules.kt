@@ -132,7 +132,7 @@ class PrivateHistoryRules(context: Context) {
     companion object {
         private const val MAX_URL_DECODE_PASSES = 3
         private val DOMAIN_WILDCARD_PREFIX = Regex(
-            """^([a-z][a-z0-9+.-]*://)?\\*\\.""",
+            """^([a-z][a-z0-9+.-]*://)?\*\.""",
             RegexOption.IGNORE_CASE,
         )
 
