@@ -133,9 +133,9 @@ jobs:
             exit 1
           fi
 
-          cp "$SIGNED" artifacts/Fenix-Privacy-Desktop-Windows.xpi
+          cp "$SIGNED" artifacts/Fenix-Privacy-Desktop.xpi
           rm -f artifacts/Fenix-Privacy-Desktop-unsigned.xpi
-          sha256sum artifacts/Fenix-Privacy-Desktop-Windows.xpi
+          sha256sum artifacts/Fenix-Privacy-Desktop.xpi
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload XPI handoff
@@ -165,7 +165,7 @@ jobs:
         run: |
           $signed = "${{ needs.extension.outputs.signed }}" -eq "true"
           if ($signed) {
-            $xpi = Resolve-Path "artifacts/Fenix-Privacy-Desktop-Windows.xpi"
+            $xpi = Resolve-Path "artifacts/Fenix-Privacy-Desktop.xpi"
             "output=Fenix-Privacy-Desktop-Installer" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           } else {
             $xpi = Resolve-Path "artifacts/Fenix-Privacy-Desktop-unsigned.xpi"
@@ -247,17 +247,22 @@ jobs:
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" \
-              final/Fenix-Privacy-Desktop-Windows.xpi \
+              final/Fenix-Privacy-Desktop.xpi \
               final/Fenix-Privacy-Desktop-Installer.exe \
               --clobber
           else
             gh release create "$RELEASE_TAG" \
-              final/Fenix-Privacy-Desktop-Windows.xpi \
+              final/Fenix-Privacy-Desktop.xpi \
               final/Fenix-Privacy-Desktop-Installer.exe \
-              --prerelease \
+              --latest=false \
               --title "Fenix Privacy Desktop $VERSION" \
-              --notes "Mozilla-signed Firefox extension plus Windows installer EXE. The EXE launches the signed XPI in Firefox for the normal add-on confirmation."
+              --notes "Production release: Mozilla-signed Firefox extension for Windows, macOS and Linux, plus the Windows installer EXE. The EXE launches the same signed XPI in Firefox for the normal add-on confirmation."
           fi
+
+          ASSETS="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          printf '%s\n' "$ASSETS"
+          grep -Fxq 'Fenix-Privacy-Desktop.xpi' <<< "$ASSETS"
+          grep -Fxq 'Fenix-Privacy-Desktop-Installer.exe' <<< "$ASSETS"
 
       - name: Publish Firefox self-update manifest
         env:
@@ -267,8 +272,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          SHA256="$(sha256sum final/Fenix-Privacy-Desktop-Windows.xpi | awk '{print $1}')"
-          UPDATE_LINK="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/Fenix-Privacy-Desktop-Windows.xpi"
+          SHA256="$(sha256sum final/Fenix-Privacy-Desktop.xpi | awk '{print $1}')"
+          UPDATE_LINK="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/Fenix-Privacy-Desktop.xpi"
           export SHA256 UPDATE_LINK
 
           git fetch origin main
