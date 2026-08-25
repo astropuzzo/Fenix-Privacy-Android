@@ -257,13 +257,6 @@ def patch_gradle(target: Path) -> None:
     body = body.replace('def deepLinkSchemeValue = "fenix"', 'def deepLinkSchemeValue = "fenix-privacy"', 1)
     s = s[:m.start()] + m.group(1) + body + m.group(3) + s[m.end():]
 
-    official_universal = re.compile(
-        r'\n\s*if \(gradle\.mozconfig\.substs\.MOZILLA_OFFICIAL \|\| System\.getenv\("MOZ_BUILD_CONFIG_LINT"\) == "1"\) \{\n\s*universalApk true\n\s*\}'
-    )
-    s, n = official_universal.subn("\n                universalApk true", s, count=1)
-    if n != 1:
-        raise SystemExit("Universal APK anchor moved")
-
     marker = "        if (buildType in ['nightly', 'beta', 'release', 'benchmark']) {"
     custom = (
         "        def privacyVersionCode = System.getenv(\"FENIX_PRIVACY_VERSION_CODE\")\n"
