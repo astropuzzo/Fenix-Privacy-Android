@@ -12,6 +12,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -137,16 +138,31 @@ class FenixPrivacyDownloadReceiver : BroadcastReceiver() {
         if (completedId != expectedId) return
 
         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val uri = manager.getUriForDownloadedFile(completedId) ?: return
+        val uri = manager.getUriForDownloadedFile(completedId)
+        if (uri == null) {
+            // DOWNLOAD_COMPLETE is also broadcast for failed downloads. Allow the next worker to retry.
+            clearQueuedUpdate(prefs)
+            return
+        }
+
         val expectedSha = prefs.getString(KEY_EXPECTED_SHA256, "").orEmpty()
         if (expectedSha.isBlank() || !sha256Matches(context, uri, expectedSha)) {
             manager.remove(completedId)
-            prefs.edit { remove(KEY_DOWNLOAD_ID) }
+            clearQueuedUpdate(prefs)
             return
         }
 
         val versionName = prefs.getString(KEY_QUEUED_VERSION_NAME, "").orEmpty()
         showInstallNotification(context, uri, versionName)
+    }
+}
+
+private fun clearQueuedUpdate(prefs: SharedPreferences) {
+    prefs.edit {
+        remove(KEY_DOWNLOAD_ID)
+        remove(KEY_QUEUED_VERSION)
+        remove(KEY_EXPECTED_SHA256)
+        remove(KEY_QUEUED_VERSION_NAME)
     }
 }
 
