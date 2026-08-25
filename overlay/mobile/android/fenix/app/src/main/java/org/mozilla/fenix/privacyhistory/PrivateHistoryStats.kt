@@ -18,7 +18,7 @@ class PrivateHistoryStats(
     )
     private val lock = Any()
 
-    // Only a non-reversible String hash is kept briefly in memory. This prevents Gecko's
+    // Only an integer String hash is kept briefly in memory. This prevents Gecko's
     // overlapping callbacks from making a single protection look like several events.
     private val recentProtections = mutableMapOf<Int, Long>()
 
