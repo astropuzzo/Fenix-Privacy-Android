@@ -349,7 +349,7 @@ jobs:
             -Dorg.gradle.vfs.watch=false \
             "-Dorg.gradle.jvmargs=-Xmx4608m -Xms1g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC" \
             -p mobile/android/fenix/app \
-            testDebugUnitTest \
+            :app:testDebugUnitTest \
             --tests 'org.mozilla.fenix.privacyhistory.*' \
             --tests 'org.mozilla.fenix.historymetadata.PrivateHistoryMetadataSuppressionTest'
 
