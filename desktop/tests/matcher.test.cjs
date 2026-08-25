@@ -14,7 +14,13 @@ function event() {
 
 const state = {};
 const deleteCalls = [];
+const alarmPeriods = [];
 const onVisited = event();
+const onCommitted = event();
+const onHistoryStateUpdated = event();
+const onTabUpdated = event();
+const onStorageChanged = event();
+const onAlarm = event();
 const browser = {
   permissions: {
     async contains() { return false; },
@@ -26,16 +32,20 @@ const browser = {
       async get(defaults) { return { ...(defaults || {}), ...state }; },
       async set(patch) { Object.assign(state, patch); },
     },
-    onChanged: event(),
+    onChanged: onStorageChanged,
   },
   history: {
     onVisited,
     async deleteUrl(details) { deleteCalls.push(details.url); },
     async search() { return []; },
   },
-  webNavigation: { onCommitted: event(), onHistoryStateUpdated: event() },
-  tabs: { onUpdated: event() },
-  alarms: { async clear() {}, create() {}, onAlarm: event() },
+  webNavigation: { onCommitted, onHistoryStateUpdated },
+  tabs: { onUpdated: onTabUpdated },
+  alarms: {
+    async clear() {},
+    create(_name, details) { alarmPeriods.push(details.periodInMinutes); },
+    onAlarm,
+  },
   runtime: {
     onInstalled: event(),
     onStartup: event(),
@@ -70,6 +80,9 @@ assert.equal(context.shouldSuppress("https://search.test/?q=Secret", "", setting
 assert.equal(context.shouldSuppress("https://search.test/?q=secretary", "", settings({ keywords: ["secret"], wholeWord: true })), false);
 assert.equal(context.shouldSuppress("https://search.test/?q=secret", "", settings({ keywords: ["secret"], wholeWord: true })), true);
 assert.equal(context.shouldSuppress("https://test/abc123", "", settings({ regex: ["abc\\d+"] })), true);
+assert.equal(context.shouldSuppress("https://test/fooo", "", settings({ regex: ["foo{1,3}"] })), true);
+assert.equal(context.shouldSuppress("https://test/alpha;beta", "", settings({ regex: ["alpha;beta"] })), true);
+assert.equal(context.shouldSuppress("https://search.test/?q=very%2520secret", "", settings({ keywords: ["very secret"] })), true);
 assert.equal(context.shouldSuppress("https://test/clean", "", settings({ regex: ["("] })), false);
 assert.equal(context.shouldSuppress("https://example.com/", "", settings({ enabled: false, domains: ["example.com"] })), false);
 
@@ -89,6 +102,36 @@ async function runIntegration() {
   assert.equal(state.domains[0], "example.com");
   assert.equal(typeof state.lastMatchAt, "number");
   assert.ok(state.lastMatchAt > 0);
+
+  await context.persistSettings(settings({ keywords: ["blocked title"] }));
+  onTabUpdated.emit(
+    1,
+    { title: "A blocked title" },
+    { url: "https://clean.example/article", title: "A blocked title" },
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(
+    deleteCalls.includes("https://clean.example/article"),
+    "title-only match should be deleted from history",
+  );
+
+  await context.persistSettings(settings({ keywords: ["secret"] }));
+  browser.history.search = async () => [
+    { url: "https://search.test/?q=secret", title: "Search", lastVisitTime: 20 },
+    { url: "https://clean.test/", title: "Clean", lastVisitTime: 10 },
+  ];
+  const scrub = await context.scrubAllHistory();
+  assert.deepEqual(scrub, { removed: 1, scanned: 2 });
+  assert.ok(deleteCalls.includes("https://search.test/?q=secret"));
+
+  const alarmsBeforeSyncChange = alarmPeriods.length;
+  state.scrubEveryMinutes = 37;
+  onStorageChanged.emit({ scrubEveryMinutes: { newValue: 37 } }, "sync");
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(alarmPeriods.length > alarmsBeforeSyncChange, "synced interval should reschedule alarm");
+  assert.equal(alarmPeriods.at(-1), 37);
 }
 
 runIntegration()
