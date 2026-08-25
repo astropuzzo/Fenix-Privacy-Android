@@ -5,6 +5,15 @@
     <string name="private_history_settings_summary">Never save selected sites or words to browsing history</string>
     <string name="private_history_enabled_title">Enable private history rules</string>
     <string name="private_history_enabled_summary">Matching navigations are suppressed before they are written whenever the URL already reveals the match.</string>
+    <string name="private_history_stats_category">Protection stats</string>
+    <string name="private_history_stats_title">🛡️ Privacy counter</string>
+    <string name="private_history_stats_empty">0 total · 0 before saving · 0 after title/search · 0 from cleanup</string>
+    <string name="private_history_stats_summary">%1$d total · %2$d before saving · %3$d after title/search · %4$d from cleanup</string>
+    <string name="private_history_stats_reset_title">Reset privacy counter</string>
+    <string name="private_history_stats_reset_summary">Clear only these aggregate numbers.</string>
+    <string name="private_history_stats_reset_done">Privacy counter reset</string>
+    <string name="private_history_cookies_title">Cookies and logins stay saved</string>
+    <string name="private_history_cookies_summary">These rules affect only history and recent-search metadata. They do not delete cookies, sessions, logins, cache, or site data.</string>
     <string name="private_history_rules_category">Blacklists</string>
     <string name="private_history_domains_title">Blocked domains</string>
     <string name="private_history_domains_dialog">One domain per line</string>
