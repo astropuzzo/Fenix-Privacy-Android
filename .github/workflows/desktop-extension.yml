@@ -86,8 +86,10 @@ jobs:
           set -euo pipefail
           echo "signed=false" >> "$GITHUB_OUTPUT"
 
-          API_KEY="$(printf '%s' "${WEB_EXT_API_KEY:-}" | tr -d '\r\n')"
-          API_SECRET="$(printf '%s' "${WEB_EXT_API_SECRET:-}" | tr -d '\r\n')"
+          # AMO JWT issuer/secret never contain whitespace. Remove any spaces or
+          # line breaks accidentally copied into GitHub Actions secrets.
+          API_KEY="$(printf '%s' "${WEB_EXT_API_KEY:-}" | tr -d '[:space:]')"
+          API_SECRET="$(printf '%s' "${WEB_EXT_API_SECRET:-}" | tr -d '[:space:]')"
 
           if [[ -z "$API_KEY" || -z "$API_SECRET" ]]; then
             echo "::error::AMO signing is mandatory for main-branch releases. Add both AMO_API_KEY (JWT issuer) and AMO_API_SECRET (JWT secret) as repository Actions secrets."
