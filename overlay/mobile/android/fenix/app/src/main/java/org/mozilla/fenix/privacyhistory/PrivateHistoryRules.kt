@@ -94,7 +94,9 @@ class PrivateHistoryRules(context: Context) {
         if (raw.isBlank()) return null
 
         // Accept pasted domains, wildcard domains and full URLs consistently.
-        raw = DOMAIN_WILDCARD_PREFIX.replaceFirst(raw) { match -> match.groupValues[1] }
+        DOMAIN_WILDCARD_PREFIX.find(raw)?.let { match ->
+            raw = match.groupValues[1] + raw.substring(match.range.last + 1)
+        }
         raw = raw.trimStart('.')
         val withScheme = if (raw.contains("://")) raw else "https://$raw"
         val parsedHost = runCatching { URI(withScheme).host }.getOrNull()
