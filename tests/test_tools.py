@@ -68,6 +68,12 @@ class ToolingTests(unittest.TestCase):
                 "class HistoryMetadataMiddleware(\n"
                 "    private val historyMetadataService: HistoryMetadataService,\n"
                 ") : Middleware<BrowserState, BrowserAction> {\n"
+                "            is MediaSessionAction.UpdateMediaMetadataAction -> {\n"
+                "                store.state.findNormalTab(action.tabId)?.let { tab ->\n"
+                "                    createHistoryMetadata(store, tab)\n"
+                "                }\n"
+                "            }\n"
+                "            else -> {\n"
                 "        val key = historyMetadataService.createMetadata(tab, searchTerm, referrerUrl)\n"
                 "}\n",
                 encoding="utf-8",
@@ -79,6 +85,8 @@ class ToolingTests(unittest.TestCase):
                 "if (shouldSuppress(tab.content.url, tab.content.title, searchTerm))",
                 patched,
             )
+            self.assertIn("onSuppressed(tab.content.url)", patched)
+            self.assertIn("is ContentAction.UpdateTitleAction", patched)
 
     def test_history_metadata_patch_accepts_legacy_constructor(self):
         module = load_module(
@@ -95,6 +103,12 @@ class ToolingTests(unittest.TestCase):
             path.write_text(
                 "class HistoryMetadataMiddleware(private val historyMetadataService: HistoryMetadataService) :\n"
                 "    Middleware<BrowserState, BrowserAction> {\n"
+                "            is MediaSessionAction.UpdateMediaMetadataAction -> {\n"
+                "                store.state.findNormalTab(action.tabId)?.let { tab ->\n"
+                "                    createHistoryMetadata(store, tab)\n"
+                "                }\n"
+                "            }\n"
+                "            else -> {\n"
                 "        val key = historyMetadataService.createMetadata(tab, searchTerm, referrerUrl)\n"
                 "}\n",
                 encoding="utf-8",
