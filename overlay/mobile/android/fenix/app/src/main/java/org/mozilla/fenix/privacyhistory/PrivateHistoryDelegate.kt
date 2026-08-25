@@ -13,6 +13,7 @@ import mozilla.components.concept.storage.PageVisit
 class PrivateHistoryDelegate(
     private val historyStorage: Lazy<PlacesHistoryStorage>,
     private val rules: PrivateHistoryRules,
+    private val purger: PrivateHistoryPurger,
 ) : HistoryTrackingDelegate {
     override suspend fun onVisited(uri: String, visit: PageVisit) {
         if (!shouldStoreUri(uri)) {
@@ -45,11 +46,15 @@ class PrivateHistoryDelegate(
     override suspend fun getVisited(): List<String> =
         historyStorage.value.getVisited().filterNot(rules::shouldBlockUri)
 
-    override fun shouldStoreUri(uri: String): Boolean =
-        historyStorage.value.canAddUri(uri) && !rules.shouldBlockUri(uri)
-
-    private suspend fun purgeUri(uri: String) {
-        historyStorage.value.deleteVisitsFor(uri)
-        historyStorage.value.deleteHistoryMetadataForUrl(uri)
+    override fun shouldStoreUri(uri: String): Boolean {
+        if (rules.shouldBlockUri(uri)) {
+            // Gecko calls this before onVisited, so schedule deletion here as well. This removes
+            // any older or synced visits for the URL even though the new visit is never recorded.
+            purger.purgeAsync(uri)
+            return false
+        }
+        return historyStorage.value.canAddUri(uri)
     }
+
+    private suspend fun purgeUri(uri: String) = purger.purge(uri)
 }
