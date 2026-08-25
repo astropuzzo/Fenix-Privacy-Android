@@ -63,7 +63,7 @@ class PrivateHistoryRules(context: Context) {
     }
 
     private fun keywordMatches(text: String, keyword: String): Boolean {
-        if (!wholeWordsOnly || keyword.any(Char::isWhitespace)) return text.contains(keyword)
+        if (!wholeWordsOnly) return text.contains(keyword)
         val escaped = Regex.escape(keyword)
         val options = if (isCaseSensitive()) emptySet() else setOf(RegexOption.IGNORE_CASE)
         return Regex("(?<![\\p{L}\\p{N}_])$escaped(?![\\p{L}\\p{N}_])", options).containsMatchIn(text)
