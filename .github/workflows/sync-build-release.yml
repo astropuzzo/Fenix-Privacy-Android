@@ -333,6 +333,25 @@ jobs:
           sleep 3
           free -h
 
+      - name: Run Fenix Privacy Android unit tests
+        if: steps.decision.outputs.build == 'true'
+        working-directory: upstream
+        env:
+          MOZCONFIG: mozconfig
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mach gradle \
+            --no-daemon \
+            --no-parallel \
+            --max-workers=1 \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            -Dorg.gradle.vfs.watch=false \
+            "-Dorg.gradle.jvmargs=-Xmx4608m -Xms1g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC" \
+            fenix:testReleaseUnitTest \
+            --tests 'org.mozilla.fenix.privacyhistory.*' \
+            --tests 'org.mozilla.fenix.historymetadata.PrivateHistoryMetadataSuppressionTest'
+
       - name: Build unsigned universal release APK
         if: steps.decision.outputs.build == 'true'
         working-directory: upstream
