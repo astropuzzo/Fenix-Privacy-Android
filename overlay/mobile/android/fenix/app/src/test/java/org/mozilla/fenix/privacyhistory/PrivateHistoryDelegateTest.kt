@@ -38,7 +38,7 @@ class PrivateHistoryDelegateTest {
     }
 
     @Test
-    fun `blocked URL is rejected before Places storage is initialized`() {
+    fun `blocked URL is rejected synchronously then existing history is purged`() = runTest {
         prefs.edit().putString(PrivateHistoryRules.KEY_DOMAINS, "example.com").commit()
         val storage = mockk<PlacesHistoryStorage>(relaxed = true)
         var initialized = false
@@ -46,7 +46,7 @@ class PrivateHistoryDelegateTest {
             initialized = true
             storage
         }
-        val purger = PrivateHistoryPurger(lazyStorage)
+        val purger = PrivateHistoryPurger(lazyStorage, this)
         val delegate = PrivateHistoryDelegate(
             lazyStorage,
             PrivateHistoryRules(testContext),
@@ -55,6 +55,10 @@ class PrivateHistoryDelegateTest {
 
         assertFalse(delegate.shouldStoreUri("https://example.com/private"))
         assertFalse(initialized)
+        testScheduler.advanceUntilIdle()
+        assertTrue(initialized)
+        coVerify(exactly = 1) { storage.deleteVisitsFor("https://example.com/private") }
+        coVerify(exactly = 1) { storage.deleteHistoryMetadataForUrl("https://example.com/private") }
 
         every { storage.canAddUri(any()) } returns true
         assertTrue(delegate.shouldStoreUri("https://mozilla.org"))

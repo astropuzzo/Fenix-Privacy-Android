@@ -46,8 +46,15 @@ class PrivateHistoryDelegate(
     override suspend fun getVisited(): List<String> =
         historyStorage.value.getVisited().filterNot(rules::shouldBlockUri)
 
-    override fun shouldStoreUri(uri: String): Boolean =
-        !rules.shouldBlockUri(uri) && historyStorage.value.canAddUri(uri)
+    override fun shouldStoreUri(uri: String): Boolean {
+        if (rules.shouldBlockUri(uri)) {
+            // Gecko calls this before onVisited, so schedule deletion here as well. This removes
+            // any older or synced visits for the URL even though the new visit is never recorded.
+            purger.purgeAsync(uri)
+            return false
+        }
+        return historyStorage.value.canAddUri(uri)
+    }
 
     private suspend fun purgeUri(uri: String) = purger.purge(uri)
 }
