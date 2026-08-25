@@ -10,6 +10,7 @@ import mozilla.components.browser.storage.sync.PlacesHistoryStorage
 class PrivateHistoryCleaner(
     private val historyStorage: PlacesHistoryStorage,
     private val rules: PrivateHistoryRules,
+    private val stats: PrivateHistoryStats,
 ) {
     suspend fun purgeMatchingHistory(): Int {
         if (!rules.enabled) return 0
@@ -39,6 +40,7 @@ class PrivateHistoryCleaner(
             historyStorage.deleteVisitsFor(url)
             historyStorage.deleteHistoryMetadataForUrl(url)
         }
+        stats.recordRemovedDuringCleanup(urls.size)
 
         return urls.size
     }
