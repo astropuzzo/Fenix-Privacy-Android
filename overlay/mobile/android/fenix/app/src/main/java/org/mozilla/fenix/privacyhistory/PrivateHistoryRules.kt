@@ -71,21 +71,52 @@ class PrivateHistoryRules(context: Context) {
 
     private fun normalizeUrl(uri: String): String {
         if (!decodeUrl) return uri
-        return runCatching { URLDecoder.decode(uri, StandardCharsets.UTF_8.name()) }.getOrDefault(uri)
+
+        var decoded = uri
+        repeat(MAX_URL_DECODE_PASSES) {
+            val next = try {
+                URLDecoder.decode(decoded, StandardCharsets.UTF_8.name())
+            } catch (_: IllegalArgumentException) {
+                return decoded
+            }
+            if (next == decoded) return decoded
+            decoded = next
+        }
+        return decoded
     }
 
     private fun extractHost(uri: String): String? = runCatching {
-        URI(uri).host?.trimEnd('.')?.lowercase(Locale.ROOT)
+        canonicalizeHost(URI(uri).host.orEmpty())
     }.getOrNull()
 
     private fun normalizeDomain(input: String): String? {
-        val raw = input.trim().removePrefix("*.").trimEnd('/')
+        var raw = input.trim().trimEnd('/')
         if (raw.isBlank()) return null
+
+        // Accept pasted domains, wildcard domains and full URLs consistently.
+        raw = DOMAIN_WILDCARD_PREFIX.replaceFirst(raw) { match -> match.groupValues[1] }
+        raw = raw.trimStart('.')
         val withScheme = if (raw.contains("://")) raw else "https://$raw"
         val parsedHost = runCatching { URI(withScheme).host }.getOrNull()
-        return (parsedHost ?: raw.substringBefore('/').substringBefore(':'))
-            .trim().trimEnd('.').lowercase(Locale.ROOT).takeIf { it.isNotBlank() }
+        val authority = raw
+            .substringAfter("://", raw)
+            .substringBefore('/')
+            .substringBefore('?')
+            .substringBefore('#')
+            .substringAfterLast('@')
+        val fallbackHost = if (authority.startsWith("[")) {
+            authority.substringAfter('[').substringBefore(']')
+        } else {
+            authority.substringBefore(':')
+        }
+        return canonicalizeHost(parsedHost ?: fallbackHost)
     }
+
+    private fun canonicalizeHost(value: String): String? = value
+        .trim()
+        .trim('.')
+        .lowercase(Locale.ROOT)
+        .takeIf { it.isNotBlank() }
 
     private fun domainMatches(host: String, domain: String): Boolean =
         host == domain || host.endsWith(".$domain")
@@ -99,6 +130,12 @@ class PrivateHistoryRules(context: Context) {
         .toList()
 
     companion object {
+        private const val MAX_URL_DECODE_PASSES = 3
+        private val DOMAIN_WILDCARD_PREFIX = Regex(
+            """^([a-z][a-z0-9+.-]*://)?\\*\\.""",
+            RegexOption.IGNORE_CASE,
+        )
+
         const val KEY_ENABLED = "private_history_enabled"
         const val KEY_DOMAINS = "private_history_domains"
         const val KEY_KEYWORDS = "private_history_keywords"
