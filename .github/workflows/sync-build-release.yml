@@ -295,6 +295,20 @@ jobs:
         working-directory: upstream
         run: ./mach --no-interactive bootstrap --application-choice="GeckoView/Firefox for Android Artifact Mode"
 
+      - name: Configure ARM64 Gecko target
+        if: steps.decision.outputs.build == 'true'
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Eq '^[[:space:]]*ac_add_options[[:space:]]+--target=' mozconfig; then
+            echo "mozconfig already contains an active Android target:" >&2
+            grep -En '^[[:space:]]*ac_add_options[[:space:]]+--target=' mozconfig >&2
+            exit 1
+          fi
+          printf '\n# Fenix Privacy production device target\nac_add_options --target=aarch64\n' >> mozconfig
+          grep -F 'ac_add_options --target=aarch64' mozconfig
+
       - name: Verify AVD system-image was not installed
         if: steps.decision.outputs.build == 'true'
         shell: bash
@@ -353,7 +367,7 @@ jobs:
             --tests 'org.mozilla.fenix.privacyhistory.*' \
             --tests 'org.mozilla.fenix.historymetadata.PrivateHistoryMetadataSuppressionTest'
 
-      - name: Build unsigned universal release APK
+      - name: Build unsigned ARM64 release APK
         if: steps.decision.outputs.build == 'true'
         working-directory: upstream
         env:
@@ -419,7 +433,7 @@ jobs:
           if-no-files-found: ignore
           path: ${{ runner.temp }}/fenix-gradle-attempt-*.log
 
-      - name: Locate and validate unsigned universal APK
+      - name: Locate and validate unsigned ARM64 APK
         id: apk
         if: steps.decision.outputs.build == 'true'
         shell: bash
@@ -438,13 +452,15 @@ jobs:
           printf 'Produced release APKs:\n'
           printf '  %s\n' "${APKS[@]}"
 
-          mapfile -t UNIVERSAL_APKS < <(printf '%s\n' "${APKS[@]}" | grep -i 'universal' || true)
-          if (("${#UNIVERSAL_APKS[@]}" > 0)); then
-            APK="$(ls -S "${UNIVERSAL_APKS[@]}" | head -n1)"
-          else
-            APK="$(ls -S "${APKS[@]}" | head -n1)"
-            echo "::warning::No APK filename contained 'universal'; selecting the largest release APK: $APK"
+          mapfile -t ARM64_APKS < <(
+            printf '%s\n' "${APKS[@]}" | grep -E '/[^/]*arm64-v8a[^/]*\.apk$' || true
+          )
+          if (("${#ARM64_APKS[@]}" != 1)); then
+            echo "Expected exactly one ARM64 release APK, found ${#ARM64_APKS[@]}" >&2
+            printf '  %s\n' "${ARM64_APKS[@]}" >&2
+            exit 1
           fi
+          APK="${ARM64_APKS[0]}"
 
           SDK_ROOT="$MOZBUILD_STATE_PATH/android-sdk-linux"
           if [[ ! -d "$SDK_ROOT/build-tools" ]]; then
@@ -465,6 +481,8 @@ jobs:
           printf '%s\n' "$BADGING" | grep -F "package: name='io.github.astropuzzo.fenixprivacy'"
           printf '%s\n' "$BADGING" | grep -F "versionCode='$FENIX_PRIVACY_VERSION_CODE'"
           printf '%s\n' "$BADGING" | grep -F "versionName='$FENIX_PRIVACY_VERSION_NAME'"
+          printf '%s\n' "$BADGING" | grep -F "native-code: 'arm64-v8a'"
+          python3 scripts/verify_android_apk.py "$APK" --abi arm64-v8a
 
           echo "path=$APK" >> "$GITHUB_OUTPUT"
           echo "FENIX_PRIVACY_UNSIGNED_APK=$APK" >> "$GITHUB_ENV"
@@ -559,6 +577,8 @@ jobs:
           printf '%s\n' "$BADGING" | grep -F "package: name='io.github.astropuzzo.fenixprivacy'"
           printf '%s\n' "$BADGING" | grep -F "versionCode='$FENIX_PRIVACY_VERSION_CODE'"
           printf '%s\n' "$BADGING" | grep -F "versionName='$FENIX_PRIVACY_VERSION_NAME'"
+          printf '%s\n' "$BADGING" | grep -F "native-code: 'arm64-v8a'"
+          python3 scripts/verify_android_apk.py Fenix-Privacy-Android.apk --abi arm64-v8a
           sha256sum Fenix-Privacy-Android.apk
 
       - name: Create update manifest
@@ -599,7 +619,7 @@ jobs:
               update.json \
               --latest \
               --title "Fenix Privacy Android $FENIX_PRIVACY_VERSION_NAME" \
-              --notes "Automatically built from Mozilla Firefox ${FENIX_PRIVACY_UPSTREAM_REF} (${FENIX_PRIVACY_UPSTREAM_REVISION}). Production-signed APK; certificate and package identity verified in CI."
+              --notes "Automatically built from Mozilla Firefox ${FENIX_PRIVACY_UPSTREAM_REF} (${FENIX_PRIVACY_UPSTREAM_REVISION}). ARM64 production-signed APK; Gecko ABI, certificate and package identity verified in CI."
           fi
 
           ASSETS="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
