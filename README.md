@@ -28,6 +28,8 @@ There is no separate macOS/Linux package: Firefox uses the same Mozilla-signed X
 - Recent-search protection: matching Firefox history metadata/search terms are suppressed too.
 - Sync scrubber: scrubs matching records at startup and every 15 minutes if they arrive from another Firefox through Sync.
 - One-tap cleanup of existing matching local history.
+- Device-local privacy counter: aggregate totals for pre-write blocks, title/search scrubs and startup/Sync cleanup. URLs, titles, queries and rules are never stored in the counter.
+- Cookies, site data, login sessions and cache are deliberately left untouched, so protected sites can remain signed in.
 - Separate Android package: `io.github.astropuzzo.fenixprivacy`, so official Firefox can stay installed.
 - Firefox Accounts/Sync code retained from upstream Fenix.
 - Mozilla telemetry/crash reporting disabled for the custom build.
@@ -74,6 +76,8 @@ The live source tag and exact revision are recorded in [`UPSTREAM_REF`](UPSTREAM
 ## Important privacy scope
 
 The rules protect **Firefox browsing history and Firefox recent-search/history metadata** in this build. They do not erase DNS logs, network/provider logs, search-engine account history, keyboard history, screenshots, downloads, bookmarks, open tabs, or history independently stored by another app/device.
+
+Cookie and session retention is intentional: history protection does not clear cookies, logins, cache or other site data. The privacy counter stores only aggregate numbers in the app's private local preferences; resetting it clears only those numbers.
 
 ## License and branding
 
