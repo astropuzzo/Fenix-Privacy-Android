@@ -13,6 +13,7 @@ import mozilla.components.concept.storage.PageVisit
 class PrivateHistoryDelegate(
     private val historyStorage: Lazy<PlacesHistoryStorage>,
     private val rules: PrivateHistoryRules,
+    private val purger: PrivateHistoryPurger,
 ) : HistoryTrackingDelegate {
     override suspend fun onVisited(uri: String, visit: PageVisit) {
         if (!shouldStoreUri(uri)) {
@@ -46,10 +47,7 @@ class PrivateHistoryDelegate(
         historyStorage.value.getVisited().filterNot(rules::shouldBlockUri)
 
     override fun shouldStoreUri(uri: String): Boolean =
-        historyStorage.value.canAddUri(uri) && !rules.shouldBlockUri(uri)
+        !rules.shouldBlockUri(uri) && historyStorage.value.canAddUri(uri)
 
-    private suspend fun purgeUri(uri: String) {
-        historyStorage.value.deleteVisitsFor(uri)
-        historyStorage.value.deleteHistoryMetadataForUrl(uri)
-    }
+    private suspend fun purgeUri(uri: String) = purger.purge(uri)
 }
