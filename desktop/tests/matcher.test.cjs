@@ -122,7 +122,7 @@ async function runIntegration() {
     { url: "https://clean.test/", title: "Clean", lastVisitTime: 10 },
   ];
   const scrub = await context.scrubAllHistory();
-  assert.deepEqual(scrub, { removed: 1, scanned: 2 });
+  // Values come from the VM context, so compare fields instead of prototypes.\n  assert.equal(scrub.removed, 1);\n  assert.equal(scrub.scanned, 2);
   assert.ok(deleteCalls.includes("https://search.test/?q=secret"));
 
   const alarmsBeforeSyncChange = alarmPeriods.length;
