@@ -15,6 +15,7 @@ import mozilla.components.concept.storage.PageVisit
 import mozilla.components.concept.storage.VisitType
 import mozilla.components.support.test.robolectric.testContext
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -30,11 +31,13 @@ class PrivateHistoryDelegateTest {
     @Before
     fun setUp() {
         prefs.edit().clear().commit()
+        PrivateHistoryStats(testContext).reset()
     }
 
     @After
     fun tearDown() {
         prefs.edit().clear().commit()
+        PrivateHistoryStats(testContext).reset()
     }
 
     @Test
@@ -47,10 +50,12 @@ class PrivateHistoryDelegateTest {
             storage
         }
         val purger = PrivateHistoryPurger(lazyStorage, this)
+        val stats = PrivateHistoryStats(testContext)
         val delegate = PrivateHistoryDelegate(
             lazyStorage,
             PrivateHistoryRules(testContext),
             purger,
+            stats,
         )
 
         assertFalse(delegate.shouldStoreUri("https://example.com/private"))
@@ -59,6 +64,7 @@ class PrivateHistoryDelegateTest {
         assertTrue(initialized)
         coVerify(exactly = 1) { storage.deleteVisitsFor("https://example.com/private") }
         coVerify(exactly = 1) { storage.deleteHistoryMetadataForUrl("https://example.com/private") }
+        assertEquals(1L, stats.snapshot().preventedBeforeWrite)
 
         every { storage.canAddUri(any()) } returns true
         assertTrue(delegate.shouldStoreUri("https://mozilla.org"))
@@ -74,6 +80,7 @@ class PrivateHistoryDelegateTest {
             lazyStorage,
             PrivateHistoryRules(testContext),
             PrivateHistoryPurger(lazyStorage, this),
+            PrivateHistoryStats(testContext),
         )
         val visit = PageVisit(VisitType.LINK)
 
@@ -89,10 +96,12 @@ class PrivateHistoryDelegateTest {
         val storage = mockk<PlacesHistoryStorage>(relaxed = true)
         every { storage.canAddUri(any()) } returns true
         val lazyStorage = lazy { storage }
+        val stats = PrivateHistoryStats(testContext)
         val delegate = PrivateHistoryDelegate(
             lazyStorage,
             PrivateHistoryRules(testContext),
             PrivateHistoryPurger(lazyStorage, this),
+            stats,
         )
         val url = "https://clean.example/article"
 
@@ -101,6 +110,7 @@ class PrivateHistoryDelegateTest {
         coVerify(exactly = 1) { storage.deleteVisitsFor(url) }
         coVerify(exactly = 1) { storage.deleteHistoryMetadataForUrl(url) }
         coVerify(exactly = 0) { storage.recordObservation(url, any<PageObservation>()) }
+        assertEquals(1L, stats.snapshot().removedAfterMatch)
     }
 
     @Test
