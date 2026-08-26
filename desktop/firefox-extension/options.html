@@ -77,4 +77,57 @@
       </div>
     </section>
 
-    <details class="card"><summary><str
+    <details class="card">
+      <summary><strong>Advanced lists and compatibility rules</strong></summary>
+      <p>Existing domain, keyword and regular-expression lists continue to work beside visual rules.</p>
+      <div class="grid2">
+        <label><strong>Domains</strong><small>One per line; subdomains are included.</small><textarea id="domains" rows="7" spellcheck="false" placeholder="example.com"></textarea></label>
+        <label><strong>Words and phrases</strong><small>Matched against decoded URLs, searches and titles.</small><textarea id="keywords" rows="7" spellcheck="false" placeholder="private phrase"></textarea></label>
+      </div>
+      <label><strong>Regular expressions</strong><small>One JavaScript-compatible expression per line. Invalid expressions are ignored.</small><textarea id="regex" rows="6" spellcheck="false"></textarea></label>
+      <label><strong>Periodic scrub interval</strong><small>Minimum 15 minutes; catches entries restored by Firefox Sync.</small><input id="scrubEveryMinutes" type="number" min="15" step="1" value="15"></label>
+    </details>
+
+    <section class="card">
+      <div class="section-head"><div><h2>Private rule tester</h2><p>Nothing entered here is saved.</p></div></div>
+      <div class="grid2">
+        <label>URL<input id="testUrl" type="url" placeholder="https://example.com/search?q=private"></label>
+        <label>Optional title<input id="testTitle" type="text" placeholder="Page title"></label>
+      </div>
+      <div class="actions"><button id="test">Test current rules</button><strong id="testResult"></strong></div>
+    </section>
+
+    <section class="card">
+      <div class="section-head"><div><h2>Cleanup preview</h2><p>Only aggregate counts are shown; matching URLs are never listed or retained.</p></div></div>
+      <div class="actions wrap"><button id="previewClean">Preview</button><button id="clean" class="primary">Preview + clean</button></div>
+      <p id="cleanupResult" class="status"></p>
+    </section>
+
+    <section class="card">
+      <div class="section-head"><div><h2>Encrypted transfer and Firefox Sync</h2><p>AES-256-GCM bundles are compatible with Fenix Privacy Android. The passphrase is never stored.</p></div><span class="badge">Encrypted</span></div>
+      <label>Passphrase<input id="backupPassphrase" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></label>
+      <div class="grid2">
+        <label class="switch-row"><span><strong>Enable Firefox Sync transport</strong><small>Requires Firefox's built-in data-transmission consent.</small></span><input id="syncRules" type="checkbox"></label>
+        <label class="switch-row"><span><strong>Encrypted bundles only</strong><small>Rules are pushed as password-encrypted data.</small></span><input id="encryptedSync" type="checkbox" checked></label>
+      </div>
+      <div class="actions wrap">
+        <button id="exportEncrypted">Export encrypted file</button>
+        <label class="file-button">Import encrypted file<input id="importEncrypted" type="file" accept="application/octet-stream,text/plain,.fprules"></label>
+        <button id="pushEncryptedSync">Push encrypted rules</button>
+        <button id="pullEncryptedSync">Pull encrypted rules</button>
+      </div>
+    </section>
+
+    <section class="card grid2">
+      <div><h2>Integrity self-test</h2><p>Checks matcher precedence, homepage collapse, counters and safe cookie defaults.</p><div class="actions"><button id="selfTest">Run self-test</button><strong id="selfTestResult"></strong></div></div>
+      <div><h2>Update center</h2><p id="updateCenter">Checking installed and signed update information…</p><button id="openAddons">Open Firefox Add-ons</button></div>
+    </section>
+
+    <section class="card">
+      <div class="actions wrap"><button id="save" class="primary">Save all settings</button><button id="resetCounter">Reset aggregate counters</button></div>
+      <p id="status" class="status"></p>
+    </section>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

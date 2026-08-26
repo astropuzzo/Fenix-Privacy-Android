@@ -4,6 +4,29 @@ const vm = require("node:vm");
 const path = require("node:path");
 const { webcrypto } = require("node:crypto");
 
+const optionsHtml = fs.readFileSync(
+  path.join(__dirname, "..", "firefox-extension", "options.html"),
+  "utf8",
+);
+const requiredOptionIds = [
+  "activeProfiles", "addRule", "backupPassphrase", "cancelEdit", "caseSensitive",
+  "clean", "cleanupResult", "domains", "enabled", "encryptedSync", "exportEncrypted",
+  "importEncrypted", "keywords", "metricCollapsed", "metricHealth", "metricToday",
+  "metricTotal", "metricWeek", "openAddons", "previewClean", "pullEncryptedSync",
+  "pushEncryptedSync", "queryParameterRow", "regex", "resetCounter", "ruleAction",
+  "ruleClearCache", "ruleClearCookies", "ruleClearDownloads", "ruleCloseTab", "ruleExpiry",
+  "ruleMatcher", "ruleName", "ruleProfile", "ruleQueryParameter", "ruleValue", "save",
+  "scrubEveryMinutes", "scrubOnStartup", "selfTest", "selfTestResult", "status", "syncRules",
+  "temporaryStatus", "test", "testResult", "testTitle", "testUrl", "updateCenter",
+  "visualRuleList", "wholeWord",
+];
+for (const id of requiredOptionIds) {
+  assert.match(optionsHtml, new RegExp(`\\bid=["']${id}["']`), `options.html must contain #${id}`);
+}
+const optionIds = [...optionsHtml.matchAll(/\bid=["']([^"']+)["']/g)].map((match) => match[1]);
+assert.equal(new Set(optionIds).size, optionIds.length, "options.html IDs must be unique");
+assert.match(optionsHtml, /<\/html>\s*$/, "options.html must be a complete document");
+
 function event() {
   const listeners = [];
   return {
