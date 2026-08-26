@@ -5,6 +5,8 @@
 package org.mozilla.fenix.privacyhistory
 
 import mozilla.components.browser.storage.sync.PlacesHistoryStorage
+import mozilla.components.concept.storage.PageVisit
+import mozilla.components.concept.storage.VisitType
 
 /** Scrubs old/local/synced history plus search-term metadata that matches current rules. */
 class PrivateHistoryCleaner(
@@ -12,36 +14,73 @@ class PrivateHistoryCleaner(
     private val rules: PrivateHistoryRules,
     private val stats: PrivateHistoryStats,
 ) {
+    data class Preview(
+        val scanned: Int,
+        val matching: Int,
+        val collapsedToRoot: Int,
+    )
+
+    private data class PlannedRemoval(
+        val url: String,
+        val collapsedUri: String?,
+    )
+
+    suspend fun previewMatchingHistory(): Preview {
+        if (!rules.enabled) return Preview(scanned = 0, matching = 0, collapsedToRoot = 0)
+        val (scanned, plan) = buildPlan()
+        return Preview(
+            scanned = scanned,
+            matching = plan.size,
+            collapsedToRoot = plan.count { !it.collapsedUri.isNullOrBlank() },
+        )
+    }
+
     suspend fun purgeMatchingHistory(): Int {
         if (!rules.enabled) return 0
+        val (_, plan) = buildPlan()
+        val roots = linkedSetOf<String>()
 
-        val visitUrls = historyStorage
-            .getDetailedVisits(start = 0L, end = Long.MAX_VALUE)
-            .asSequence()
-            .filter { rules.shouldBlockVisit(it.url, it.title) }
-            .map { it.url }
-            .distinct()
-            .toList()
-
-        val metadata = historyStorage
-            .getHistoryMetadataSince(0L)
-            .filter { record ->
-                rules.shouldBlockVisit(
-                    uri = record.key.url,
-                    title = record.title,
-                    searchTerm = record.key.searchTerm,
-                )
-            }
-
-        // A search term may be present only in metadata. Its URL still has a Places visit,
-        // so always purge both stores for every matching URL, including entries from Sync.
-        val urls = (visitUrls + metadata.map { it.key.url }).distinct()
-        urls.forEach { url ->
-            historyStorage.deleteVisitsFor(url)
-            historyStorage.deleteHistoryMetadataForUrl(url)
+        plan.forEach { item ->
+            historyStorage.deleteVisitsFor(item.url)
+            historyStorage.deleteHistoryMetadataForUrl(item.url)
+            item.collapsedUri?.takeIf { it != item.url }?.let(roots::add)
         }
-        stats.recordRemovedDuringCleanup(urls.size)
+        roots.forEach { root ->
+            if (historyStorage.canAddUri(root)) {
+                historyStorage.recordVisit(root, PageVisit(VisitType.LINK))
+            }
+        }
 
-        return urls.size
+        stats.recordRemovedDuringCleanup(plan.size)
+        if (roots.isNotEmpty()) stats.recordCollapsedDuringCleanup(roots.size)
+        return plan.size
+    }
+
+    private suspend fun buildPlan(): Pair<Int, List<PlannedRemoval>> {
+        val visits = historyStorage.getDetailedVisits(start = 0L, end = Long.MAX_VALUE)
+        val metadata = historyStorage.getHistoryMetadataSince(0L)
+        val decisions = linkedMapOf<String, PrivateHistoryDecision>()
+
+        visits.forEach { visit ->
+            val decision = rules.decide(visit.url, visit.title)
+            if (decision.suppressesOriginal) decisions[visit.url] = decision
+        }
+        metadata.forEach { record ->
+            val decision = rules.decide(
+                uri = record.key.url,
+                title = record.title,
+                searchTerm = record.key.searchTerm,
+            )
+            if (decision.suppressesOriginal) decisions[record.key.url] = decision
+        }
+
+        val plan = decisions.map { (url, decision) ->
+            PlannedRemoval(
+                url = url,
+                collapsedUri = decision.collapsedUri
+                    .takeIf { decision.action == PrivateHistoryRule.Action.COLLAPSE_TO_ROOT },
+            )
+        }
+        return (visits.size + metadata.size) to plan
     }
 }

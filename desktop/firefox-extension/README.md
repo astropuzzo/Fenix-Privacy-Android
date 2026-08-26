@@ -2,9 +2,13 @@
 
 Firefox Desktop WebExtension for selective history suppression. It removes matching entries for domains, keywords/phrases, decoded URL/query content, page titles and regular expressions.
 
+Version 2.0 adds Privacy Studio: visual allow/block/collapse rules, profiles, exact exceptions, quick page actions, a true per-tab temporary shield, aggregate dashboard, cleanup preview, optional per-rule actions, integrity checks, and AES-256-GCM rule bundles compatible with Android.
+
 ## Privacy model
 
-The extension does not transmit browsing data or rules to a developer-controlled server. Rules stay local by default. The user can explicitly enable rule synchronization; Firefox then presents its built-in data-transmission consent for the rule data (which can contain domains/search terms/settings) and, only after consent, the extension stores rule preferences in `storage.sync` so Firefox Sync can synchronize them between desktop profiles when Add-ons sync is enabled. Firefox for Android does not currently synchronize WebExtension `storage.sync`; the Android build in this repository therefore has its own native rule store.
+The extension does not transmit browsing data or rules to a developer-controlled server. Rules stay local by default. The user can explicitly push a password-encrypted bundle to `storage.sync`; Firefox first presents its built-in data-transmission consent. The passphrase is never stored or synchronized. Android imports and exports the same `.fprules` format, because native Fenix settings cannot directly read WebExtension `storage.sync`.
+
+Cookies, logins, sessions, cache, downloads and tabs remain untouched unless an optional action is explicitly enabled on one visual rule and the corresponding Firefox permission is granted.
 
 ## Permissions
 
@@ -13,6 +17,9 @@ The extension does not transmit browsing data or rules to a developer-controlled
 - `webNavigation`: react as soon as a top-level navigation is committed.
 - `storage`: store rules and statistics; uses `storage.sync` with a local fallback.
 - `alarms`: periodic scrub to catch entries arriving through Firefox Sync.
+- `contextMenus`: quick rules from the current page.
+
+`cookies`, `browsingData`, download-list access and all-site host access are optional. Firefox requests them only when the user enables the matching destructive rule action.
 
 ## Install on Windows
 

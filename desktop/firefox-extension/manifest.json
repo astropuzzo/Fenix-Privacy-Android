@@ -1,14 +1,23 @@
 {
   "manifest_version": 3,
   "name": "Fenix Privacy Desktop",
-  "version": "1.0.0",
-  "description": "Selective Firefox history suppression for domains, keywords, phrases and regular expressions.",
+  "version": "2.0.0",
+  "description": "Privacy Studio for selective Firefox history: visual rules, profiles, exceptions, collapsing and encrypted sync.",
   "permissions": [
     "alarms",
+    "contextMenus",
     "history",
     "storage",
     "tabs",
     "webNavigation"
+  ],
+  "optional_permissions": [
+    "browsingData",
+    "cookies",
+    "downloads"
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
   ],
   "background": {
     "scripts": [

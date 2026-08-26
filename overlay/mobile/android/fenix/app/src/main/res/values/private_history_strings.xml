@@ -54,4 +54,142 @@
     <string name="fenix_privacy_update_download_summary">Verified signed update from the project release feed</string>
     <string name="fenix_privacy_update_ready">Fenix Privacy %1$s is ready</string>
     <string name="fenix_privacy_update_ready_summary">Tap to confirm installation with Android.</string>
+
+    <string name="private_history_stats_summary_v2">%1$d total · %2$d today · %3$d this week\n%4$d prevented · %5$d after title/search · %6$d cleanup · %7$d collapsed</string>
+    <string name="private_history_stats_milestone_title">🏆 Next milestone</string>
+    <string name="private_history_stats_milestone_empty">Protection milestones appear here</string>
+    <string name="private_history_stats_milestone_summary">Next shield unlocked at %1$d protections</string>
+    <string name="private_history_shield_title">🛡️ Live shield</string>
+    <string name="private_history_last_none">No protection event in this counter yet</string>
+    <string name="private_history_last_prevented">Last action: blocked before history was written</string>
+    <string name="private_history_last_removed">Last action: removed after title/search match</string>
+    <string name="private_history_last_cleanup">Last action: cleanup or Sync scrub</string>
+    <string name="private_history_last_collapsed">Last action: collapsed to the site homepage</string>
+    <string name="private_history_tile_label">Fenix Privacy shield</string>
+    <string name="private_history_tile_active">Active · %1$d protected</string>
+    <string name="private_history_tile_paused">Paused</string>
+
+    <string name="private_history_visual_category">Privacy Studio</string>
+    <string name="private_history_rule_builder_title">＋ Create a visual rule</string>
+    <string name="private_history_rule_builder_summary">Allow, block, or collapse a domain, path, query, title, or exact URL</string>
+    <string name="private_history_rule_manager_title">Manage visual rules</string>
+    <string name="private_history_visual_rules_empty">No visual rules</string>
+    <string name="private_history_visual_rules_summary">%1$d active of %2$d visual rules</string>
+    <string name="private_history_manage_rules_title">Visual rules</string>
+    <string name="private_history_delete_rule">Delete rule</string>
+    <string name="private_history_delete_rule_confirm">Delete this rule? This does not change cookies or existing history.</string>
+    <string name="private_history_profiles_title">Active profiles</string>
+    <string name="private_history_profiles_dialog">One active profile per line</string>
+    <string name="private_history_profiles_default">Default profile</string>
+    <string name="private_history_advanced_rules_category">Legacy and advanced lists</string>
+
+    <string name="private_history_builder_add_title">New privacy rule</string>
+    <string name="private_history_builder_edit_title">Edit privacy rule</string>
+    <string name="private_history_builder_name">Rule name</string>
+    <string name="private_history_builder_profile">Profile</string>
+    <string name="private_history_builder_matcher">What should match</string>
+    <string name="private_history_builder_value">Domain, URL, path, word, or expression</string>
+    <string name="private_history_builder_query_parameter">Query parameter name (optional)</string>
+    <string name="private_history_builder_action">History action</string>
+    <string name="private_history_builder_expiry">Expires after minutes (blank = never)</string>
+    <string name="private_history_builder_enabled">Rule enabled</string>
+    <string name="private_history_builder_optional_actions">Explicit optional actions — cookies remain off by default</string>
+    <string name="private_history_builder_clear_cookies">Also clear this site’s cookies, login and storage</string>
+    <string name="private_history_builder_clear_cache">Also clear this site’s cache</string>
+    <string name="private_history_builder_clear_downloads">Also clear the download list (files stay on disk)</string>
+    <string name="private_history_builder_close_tab">Also close matching open tabs</string>
+    <string name="private_history_builder_save">Save rule</string>
+    <string name="private_history_builder_value_required">Enter a value to match</string>
+
+    <string name="private_history_tester_dialog_title">Test a URL privately</string>
+    <string name="private_history_tester_summary">Preview the exact decision without saving the tested URL</string>
+    <string name="private_history_tester_url">URL</string>
+    <string name="private_history_tester_title">Optional page title</string>
+    <string name="private_history_tester_run">Test</string>
+    <string name="private_history_tester_allowed">✅ Saved normally. Cookies and login remain available.</string>
+    <string name="private_history_tester_blocked">🛡️ Blocked from history. Cookies and login remain available unless the rule explicitly says otherwise.</string>
+    <string name="private_history_tester_collapsed">🏠 The specific page is hidden; history records only %1$s</string>
+
+    <string name="private_history_temporary_title">Temporary protection</string>
+    <string name="private_history_temporary_off">Off — normal selective rules are active</string>
+    <string name="private_history_temporary_until">All history is blocked until %1$s</string>
+    <string name="private_history_temporary_session_active">All history is blocked until the app process closes</string>
+
+    <string name="private_history_quick_title">Add Fenix Privacy rule</string>
+    <string name="private_history_quick_invalid_url">Share a valid http or https page</string>
+    <string name="private_history_quick_saved">Privacy rule saved</string>
+
+    <string name="private_history_security_category">Security and encrypted transfer</string>
+    <string name="private_history_auth_switch_title">Lock rules with biometric/PIN</string>
+    <string name="private_history_auth_switch_summary">Protect this settings screen with the device lock. No biometric data is stored by Fenix Privacy.</string>
+    <string name="private_history_auth_title">Unlock Privacy Studio</string>
+    <string name="private_history_auth_subtitle">Use your biometric or device PIN to view private rules</string>
+    <string name="private_history_backup_export_title">Export encrypted rules</string>
+    <string name="private_history_backup_export_summary">Create a password-encrypted cross-platform sync bundle; history and counters are excluded</string>
+    <string name="private_history_backup_import_title">Import encrypted rules</string>
+    <string name="private_history_backup_import_summary">Restore a .fprules bundle from Android or Firefox Desktop</string>
+    <string name="private_history_backup_passphrase_hint">Passphrase (minimum 8 characters)</string>
+    <string name="private_history_backup_passphrase_short">Use at least 8 characters</string>
+    <string name="private_history_backup_exported">Encrypted rule bundle saved</string>
+    <string name="private_history_backup_imported">Imported %1$d visual rules</string>
+    <string name="private_history_backup_failed">Could not decrypt or save the rule bundle</string>
+
+    <string name="private_history_cleanup_previewing">Counting matching records without displaying their URLs…</string>
+    <string name="private_history_cleanup_nothing">No matching history records</string>
+    <string name="private_history_cleanup_confirm_title">Confirm selective cleanup</string>
+    <string name="private_history_cleanup_preview">%1$d history records will be removed. %2$d site roots will be retained by collapse rules. Cookies, logins and site data will remain untouched unless a visual rule explicitly enables another action.</string>
+    <string name="private_history_cleanup_confirm">Clean now</string>
+    <string name="private_history_self_test_title">Run privacy integrity self-test</string>
+    <string name="private_history_self_test_summary">Verify rule codec, root collapsing, counter isolation, session isolation and encrypted backup locally</string>
+    <string name="private_history_self_test_ok">All %1$d/%2$d privacy checks passed</string>
+    <string name="private_history_self_test_failed">Self-test failed: %1$s</string>
+
+    <string name="fenix_privacy_update_status_title">Update center · tap to check now</string>
+    <string name="fenix_privacy_update_status_empty">No update check recorded yet</string>
+    <string name="fenix_privacy_update_status_summary">Status: %1$s · feed version: %2$s · last check: %3$s</string>
+    <string name="fenix_privacy_update_status_summary_v2">Installed: %1$s · Mozilla: %2$s · signature: %3$s\nStatus: %4$s · feed: %5$s · checked: %6$s</string>
+    <string name="fenix_privacy_update_check_started">Update check started</string>
+    <string name="fenix_privacy_update_never">never</string>
+    <string name="fenix_privacy_signature_verified">verified</string>
+    <string name="fenix_privacy_signature_unverified">not verified</string>
+    <string name="fenix_privacy_release_notes_title">What’s new and release notes</string>
+    <string name="fenix_privacy_release_notes_summary">Available after the first update check</string>
+    <string name="fenix_privacy_release_notes_summary_v2">Open the signed release notes · upstream %1$s</string>
+    <string name="fenix_privacy_release_notes_unavailable">Run an update check first</string>
+
+    <string-array name="private_history_matcher_labels">
+        <item>Whole domain and subdomains</item>
+        <item>Everything except the homepage</item>
+        <item>Path or section prefix</item>
+        <item>Word or phrase in URL</item>
+        <item>Word or phrase in title</item>
+        <item>Search/query parameter</item>
+        <item>Regular expression</item>
+        <item>Exact URL</item>
+    </string-array>
+    <string-array name="private_history_action_labels">
+        <item>Always allow and save</item>
+        <item>Never save to history</item>
+        <item>Save only the site homepage</item>
+    </string-array>
+    <string-array name="private_history_rule_actions">
+        <item>Edit</item>
+        <item>Enable or pause</item>
+        <item>Delete</item>
+    </string-array>
+    <string-array name="private_history_temporary_modes">
+        <item>Block all history for 15 minutes</item>
+        <item>Block all history for 1 hour</item>
+        <item>Block all history until the app closes</item>
+        <item>Stop temporary mode</item>
+    </string-array>
+    <string-array name="private_history_quick_actions">
+        <item>Never save this site</item>
+        <item>Never save this section</item>
+        <item>Keep only this site’s homepage</item>
+        <item>Always allow this exact page</item>
+        <item>Collapse this site to its homepage</item>
+        <item>Hide this site for 15 minutes</item>
+        <item>Open custom rule builder</item>
+    </string-array>
 </resources>

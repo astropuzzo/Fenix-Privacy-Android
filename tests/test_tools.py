@@ -156,23 +156,20 @@ class ToolingTests(unittest.TestCase):
             self.assertIn("privateHistoryStats.recordRemovedAfterMatch(url)", patched)
             self.assertIn("privateHistoryPurger.purgeAsync(url)", patched)
 
-    def test_history_privacy_overlay_does_not_manipulate_site_state(self):
+    def test_destructive_site_actions_are_explicit_and_opt_in(self):
         source_dir = (
             ROOT
             / "overlay/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/"
             / "privacyhistory"
         )
         source = "\n".join(path.read_text(encoding="utf-8") for path in source_dir.rglob("*.kt"))
-        forbidden_calls = (
-            "clearCookies(",
-            "removeAllCookies(",
-            "deleteAllCookies(",
-            "clearSiteData(",
-            "clearCache(",
-        )
-        for call in forbidden_calls:
-            with self.subTest(call=call):
-                self.assertNotIn(call, source)
+        rule_source = (source_dir / "PrivateHistoryRule.kt").read_text(encoding="utf-8")
+        self.assertIn("val clearCookies: Boolean = false", rule_source)
+        self.assertIn("val clearCache: Boolean = false", rule_source)
+        self.assertIn("val clearDownloads: Boolean = false", rule_source)
+        self.assertIn("val closeTab: Boolean = false", rule_source)
+        self.assertIn("if (rule == null || !rule.isDestructive", source)
+        self.assertIn("Cookies and logins stay saved", (ROOT / "README.md").read_text(encoding="utf-8"))
 
     def test_public_android_release_confirmation_uses_release_date(self):
         stable = load_module(

@@ -53,4 +53,142 @@
     <string name="fenix_privacy_update_download_summary">Aggiornamento firmato verificato dal feed release del progetto</string>
     <string name="fenix_privacy_update_ready">Fenix Privacy %1$s è pronto</string>
     <string name="fenix_privacy_update_ready_summary">Tocca per confermare l’installazione con Android.</string>
+
+    <string name="private_history_stats_summary_v2">%1$d totali · %2$d oggi · %3$d questa settimana\n%4$d prevenuti · %5$d dopo titolo/ricerca · %6$d pulizia · %7$d compressi</string>
+    <string name="private_history_stats_milestone_title">🏆 Prossimo traguardo</string>
+    <string name="private_history_stats_milestone_empty">Qui compariranno i traguardi della protezione</string>
+    <string name="private_history_stats_milestone_summary">Prossimo scudo sbloccato a %1$d protezioni</string>
+    <string name="private_history_shield_title">🛡️ Scudo in tempo reale</string>
+    <string name="private_history_last_none">Ancora nessun evento di protezione nel contatore</string>
+    <string name="private_history_last_prevented">Ultima azione: bloccata prima di scrivere la cronologia</string>
+    <string name="private_history_last_removed">Ultima azione: rimossa dopo titolo o ricerca</string>
+    <string name="private_history_last_cleanup">Ultima azione: pulizia locale o da Sync</string>
+    <string name="private_history_last_collapsed">Ultima azione: compressa sulla homepage del sito</string>
+    <string name="private_history_tile_label">Scudo Fenix Privacy</string>
+    <string name="private_history_tile_active">Attivo · %1$d protetti</string>
+    <string name="private_history_tile_paused">In pausa</string>
+
+    <string name="private_history_visual_category">Privacy Studio</string>
+    <string name="private_history_rule_builder_title">＋ Crea una regola visuale</string>
+    <string name="private_history_rule_builder_summary">Consenti, blocca o comprimi dominio, percorso, ricerca, titolo o URL esatto</string>
+    <string name="private_history_rule_manager_title">Gestisci regole visuali</string>
+    <string name="private_history_visual_rules_empty">Nessuna regola visuale</string>
+    <string name="private_history_visual_rules_summary">%1$d regole attive su %2$d</string>
+    <string name="private_history_manage_rules_title">Regole visuali</string>
+    <string name="private_history_delete_rule">Elimina regola</string>
+    <string name="private_history_delete_rule_confirm">Eliminare questa regola? Cookie e cronologia esistente non verranno modificati.</string>
+    <string name="private_history_profiles_title">Profili attivi</string>
+    <string name="private_history_profiles_dialog">Un profilo attivo per riga</string>
+    <string name="private_history_profiles_default">Profilo Default</string>
+    <string name="private_history_advanced_rules_category">Liste classiche e avanzate</string>
+
+    <string name="private_history_builder_add_title">Nuova regola privacy</string>
+    <string name="private_history_builder_edit_title">Modifica regola privacy</string>
+    <string name="private_history_builder_name">Nome della regola</string>
+    <string name="private_history_builder_profile">Profilo</string>
+    <string name="private_history_builder_matcher">Che cosa deve corrispondere</string>
+    <string name="private_history_builder_value">Dominio, URL, percorso, parola o espressione</string>
+    <string name="private_history_builder_query_parameter">Nome parametro di ricerca (facoltativo)</string>
+    <string name="private_history_builder_action">Azione sulla cronologia</string>
+    <string name="private_history_builder_expiry">Scadenza in minuti (vuoto = mai)</string>
+    <string name="private_history_builder_enabled">Regola attiva</string>
+    <string name="private_history_builder_optional_actions">Azioni facoltative esplicite — i cookie restano disattivati per default</string>
+    <string name="private_history_builder_clear_cookies">Cancella anche cookie, accesso e memoria di questo sito</string>
+    <string name="private_history_builder_clear_cache">Cancella anche la cache di questo sito</string>
+    <string name="private_history_builder_clear_downloads">Svuota anche l’elenco download (i file restano sul dispositivo)</string>
+    <string name="private_history_builder_close_tab">Chiudi anche le schede corrispondenti</string>
+    <string name="private_history_builder_save">Salva regola</string>
+    <string name="private_history_builder_value_required">Inserisci un valore da controllare</string>
+
+    <string name="private_history_tester_dialog_title">Prova un URL senza salvarlo</string>
+    <string name="private_history_tester_summary">Mostra la decisione esatta senza memorizzare l’URL provato</string>
+    <string name="private_history_tester_url">URL</string>
+    <string name="private_history_tester_title">Titolo pagina facoltativo</string>
+    <string name="private_history_tester_run">Prova</string>
+    <string name="private_history_tester_allowed">✅ Salvato normalmente. Cookie e accesso restano disponibili.</string>
+    <string name="private_history_tester_blocked">🛡️ Escluso dalla cronologia. Cookie e accesso restano disponibili salvo azione esplicita della regola.</string>
+    <string name="private_history_tester_collapsed">🏠 La pagina specifica viene nascosta; in cronologia resta soltanto %1$s</string>
+
+    <string name="private_history_temporary_title">Protezione temporanea</string>
+    <string name="private_history_temporary_off">Disattivata — funzionano le normali regole selettive</string>
+    <string name="private_history_temporary_until">Tutta la cronologia è bloccata fino alle %1$s</string>
+    <string name="private_history_temporary_session_active">Tutta la cronologia è bloccata finché il processo dell’app non si chiude</string>
+
+    <string name="private_history_quick_title">Aggiungi regola Fenix Privacy</string>
+    <string name="private_history_quick_invalid_url">Condividi una pagina http o https valida</string>
+    <string name="private_history_quick_saved">Regola privacy salvata</string>
+
+    <string name="private_history_security_category">Sicurezza e trasferimento cifrato</string>
+    <string name="private_history_auth_switch_title">Proteggi le regole con biometria/PIN</string>
+    <string name="private_history_auth_switch_summary">Blocca questa schermata con la protezione del dispositivo. Fenix Privacy non salva dati biometrici.</string>
+    <string name="private_history_auth_title">Sblocca Privacy Studio</string>
+    <string name="private_history_auth_subtitle">Usa biometria o PIN del dispositivo per vedere le regole private</string>
+    <string name="private_history_backup_export_title">Esporta regole cifrate</string>
+    <string name="private_history_backup_export_summary">Crea un pacchetto sincronizzabile e protetto da password; cronologia e contatori sono esclusi</string>
+    <string name="private_history_backup_import_title">Importa regole cifrate</string>
+    <string name="private_history_backup_import_summary">Ripristina un file .fprules creato su Android o Firefox Desktop</string>
+    <string name="private_history_backup_passphrase_hint">Password (almeno 8 caratteri)</string>
+    <string name="private_history_backup_passphrase_short">Usa almeno 8 caratteri</string>
+    <string name="private_history_backup_exported">Pacchetto di regole cifrato salvato</string>
+    <string name="private_history_backup_imported">Importate %1$d regole visuali</string>
+    <string name="private_history_backup_failed">Impossibile decifrare o salvare il pacchetto</string>
+
+    <string name="private_history_cleanup_previewing">Conteggio delle voci corrispondenti senza mostrare gli URL…</string>
+    <string name="private_history_cleanup_nothing">Nessuna voce della cronologia corrispondente</string>
+    <string name="private_history_cleanup_confirm_title">Conferma pulizia selettiva</string>
+    <string name="private_history_cleanup_preview">Verranno rimosse %1$d voci della cronologia. Le regole di compressione conserveranno %2$d homepage. Cookie, accessi e dati dei siti restano intatti salvo azione esplicita di una regola visuale.</string>
+    <string name="private_history_cleanup_confirm">Pulisci ora</string>
+    <string name="private_history_self_test_title">Esegui controllo integrità privacy</string>
+    <string name="private_history_self_test_summary">Controlla localmente regole, compressione, isolamento contatori/sessioni e backup cifrato</string>
+    <string name="private_history_self_test_ok">Superati tutti i controlli privacy: %1$d/%2$d</string>
+    <string name="private_history_self_test_failed">Controllo fallito: %1$s</string>
+
+    <string name="fenix_privacy_update_status_title">Centro aggiornamenti · tocca per controllare</string>
+    <string name="fenix_privacy_update_status_empty">Nessun controllo aggiornamenti registrato</string>
+    <string name="fenix_privacy_update_status_summary">Stato: %1$s · versione feed: %2$s · ultimo controllo: %3$s</string>
+    <string name="fenix_privacy_update_status_summary_v2">Installata: %1$s · Mozilla: %2$s · firma: %3$s\nStato: %4$s · feed: %5$s · controllo: %6$s</string>
+    <string name="fenix_privacy_update_check_started">Controllo aggiornamenti avviato</string>
+    <string name="fenix_privacy_update_never">mai</string>
+    <string name="fenix_privacy_signature_verified">verificata</string>
+    <string name="fenix_privacy_signature_unverified">non verificata</string>
+    <string name="fenix_privacy_release_notes_title">Novità e note della release</string>
+    <string name="fenix_privacy_release_notes_summary">Disponibili dopo il primo controllo aggiornamenti</string>
+    <string name="fenix_privacy_release_notes_summary_v2">Apri le note della release firmata · upstream %1$s</string>
+    <string name="fenix_privacy_release_notes_unavailable">Esegui prima un controllo aggiornamenti</string>
+
+    <string-array name="private_history_matcher_labels">
+        <item>Intero dominio e sottodomini</item>
+        <item>Tutto tranne la homepage</item>
+        <item>Percorso o sezione</item>
+        <item>Parola o frase nell’URL</item>
+        <item>Parola o frase nel titolo</item>
+        <item>Parametro di ricerca/query</item>
+        <item>Espressione regolare</item>
+        <item>URL esatto</item>
+    </string-array>
+    <string-array name="private_history_action_labels">
+        <item>Consenti e salva sempre</item>
+        <item>Non salvare mai in cronologia</item>
+        <item>Salva soltanto la homepage del sito</item>
+    </string-array>
+    <string-array name="private_history_rule_actions">
+        <item>Modifica</item>
+        <item>Attiva o metti in pausa</item>
+        <item>Elimina</item>
+    </string-array>
+    <string-array name="private_history_temporary_modes">
+        <item>Blocca tutta la cronologia per 15 minuti</item>
+        <item>Blocca tutta la cronologia per 1 ora</item>
+        <item>Blocca tutto fino alla chiusura dell’app</item>
+        <item>Termina modalità temporanea</item>
+    </string-array>
+    <string-array name="private_history_quick_actions">
+        <item>Non salvare mai questo sito</item>
+        <item>Non salvare mai questa sezione</item>
+        <item>Conserva soltanto la homepage</item>
+        <item>Consenti sempre questa pagina esatta</item>
+        <item>Comprimi questo sito sulla homepage</item>
+        <item>Nascondi questo sito per 15 minuti</item>
+        <item>Apri il costruttore personalizzato</item>
+    </string-array>
 </resources>

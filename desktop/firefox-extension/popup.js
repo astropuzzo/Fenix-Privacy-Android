@@ -23,6 +23,8 @@ async function refresh() {
     ]);
     $("enabled").checked = Boolean(settings.enabled);
     $("removed").textContent = Number(settings.totalRemoved || 0).toLocaleString();
+    $("period").textContent = `${Number(settings.todayProtected || 0).toLocaleString()} / ${Number(settings.weekProtected || 0).toLocaleString()}`;
+    $("collapsed").textContent = Number(settings.totalCollapsed || 0).toLocaleString();
     $("rules").textContent = Number(health.rules || 0).toLocaleString();
     $("health").textContent = health.ok ? (health.enabled ? "Active" : "Paused") : "Error";
     $("lastMatch").textContent = formatWhen(health.lastMatchAt);
@@ -48,7 +50,21 @@ $("enabled").addEventListener("change", async (event) => {
 
 $("clean").addEventListener("click", async () => {
   try {
-    $("status").textContent = "Scanning…";
+    $("status").textContent = "Previewing aggregate counts…";
+    const preview = await browser.runtime.sendMessage({ type: "preview-scrub" });
+    if (!preview.matching) {
+      $("status").textContent = `Scanned ${preview.scanned}; no matching history.`;
+      return;
+    }
+    const approved = confirm(
+      `Remove ${preview.matching} matching history entr${preview.matching === 1 ? "y" : "ies"}? `
+      + `${preview.collapsed} will collapse to a homepage. Cookies and sessions stay saved.`,
+    );
+    if (!approved) {
+      $("status").textContent = "Cleanup cancelled; nothing changed.";
+      return;
+    }
+    $("status").textContent = "Cleaning…";
     const result = await browser.runtime.sendMessage({ type: "scrub-now" });
     $("status").textContent = `Scanned ${result.scanned}; removed ${result.removed} matching entr${result.removed === 1 ? "y" : "ies"}.`;
     await refresh();
@@ -58,4 +74,17 @@ $("clean").addEventListener("click", async () => {
 });
 
 $("options").addEventListener("click", () => browser.runtime.openOptionsPage());
+$("temp15").addEventListener("click", async () => {
+  try {
+    await browser.runtime.sendMessage({ type: "temporary-mode", mode: "15", minutes: 15 });
+    $("status").textContent = "All history shielded for 15 minutes; cookies stay saved.";
+  } catch (error) { showError(error); }
+});
+$("tempTab").addEventListener("click", async () => {
+  try {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    await browser.runtime.sendMessage({ type: "temporary-tab", tabId: tab?.id });
+    $("status").textContent = "This tab is shielded until it closes.";
+  } catch (error) { showError(error); }
+});
 refresh();

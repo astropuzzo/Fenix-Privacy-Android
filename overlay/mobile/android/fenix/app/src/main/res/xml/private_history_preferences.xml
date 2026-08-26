@@ -22,6 +22,22 @@
             app:iconSpaceReserved="false" />
 
         <androidx.preference.Preference
+            android:key="private_history_stats_milestone"
+            android:persistent="false"
+            android:selectable="false"
+            android:title="@string/private_history_stats_milestone_title"
+            android:summary="@string/private_history_stats_milestone_empty"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
+            android:key="private_history_shield_status"
+            android:persistent="false"
+            android:selectable="false"
+            android:title="@string/private_history_shield_title"
+            android:summary="@string/private_history_last_none"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
             android:key="private_history_stats_reset"
             android:persistent="false"
             android:title="@string/private_history_stats_reset_title"
@@ -37,7 +53,43 @@
     </androidx.preference.PreferenceCategory>
 
     <androidx.preference.PreferenceCategory
-        android:title="@string/private_history_rules_category"
+        android:title="@string/private_history_visual_category"
+        android:layout="@layout/preference_category_no_icon_style">
+
+        <androidx.preference.Preference
+            android:key="private_history_rule_builder"
+            android:title="@string/private_history_rule_builder_title"
+            android:summary="@string/private_history_rule_builder_summary"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
+            android:key="private_history_rule_manager"
+            android:title="@string/private_history_rule_manager_title"
+            android:summary="@string/private_history_visual_rules_empty"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.EditTextPreference
+            android:key="private_history_active_profiles"
+            android:defaultValue="Default"
+            android:title="@string/private_history_profiles_title"
+            android:dialogTitle="@string/private_history_profiles_dialog"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
+            android:key="private_history_temporary_mode"
+            android:title="@string/private_history_temporary_title"
+            android:summary="@string/private_history_temporary_off"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
+            android:key="private_history_rule_tester"
+            android:title="@string/private_history_tester_dialog_title"
+            android:summary="@string/private_history_tester_summary"
+            app:iconSpaceReserved="false" />
+    </androidx.preference.PreferenceCategory>
+
+    <androidx.preference.PreferenceCategory
+        android:title="@string/private_history_advanced_rules_category"
         android:layout="@layout/preference_category_no_icon_style">
 
         <androidx.preference.EditTextPreference
@@ -99,6 +151,30 @@
     </androidx.preference.PreferenceCategory>
 
     <androidx.preference.PreferenceCategory
+        android:title="@string/private_history_security_category"
+        android:layout="@layout/preference_category_no_icon_style">
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:key="private_history_biometric_lock"
+            android:defaultValue="false"
+            android:title="@string/private_history_auth_switch_title"
+            android:summary="@string/private_history_auth_switch_summary"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
+            android:key="private_history_backup_export"
+            android:title="@string/private_history_backup_export_title"
+            android:summary="@string/private_history_backup_export_summary"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
+            android:key="private_history_backup_import"
+            android:title="@string/private_history_backup_import_title"
+            android:summary="@string/private_history_backup_import_summary"
+            app:iconSpaceReserved="false" />
+    </androidx.preference.PreferenceCategory>
+
+    <androidx.preference.PreferenceCategory
         android:title="@string/private_history_cleanup_category"
         android:layout="@layout/preference_category_no_icon_style">
 
@@ -106,6 +182,12 @@
             android:key="private_history_cleanup"
             android:title="@string/private_history_cleanup_title"
             android:summary="@string/private_history_cleanup_summary"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
+            android:key="private_history_self_test"
+            android:title="@string/private_history_self_test_title"
+            android:summary="@string/private_history_self_test_summary"
             app:iconSpaceReserved="false" />
     </androidx.preference.PreferenceCategory>
 
@@ -118,6 +200,18 @@
             android:defaultValue="true"
             android:title="@string/fenix_privacy_auto_update_title"
             android:summary="@string/fenix_privacy_auto_update_summary"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
+            android:key="fenix_privacy_update_status"
+            android:title="@string/fenix_privacy_update_status_title"
+            android:summary="@string/fenix_privacy_update_status_empty"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
+            android:key="fenix_privacy_release_notes"
+            android:title="@string/fenix_privacy_release_notes_title"
+            android:summary="@string/fenix_privacy_release_notes_summary"
             app:iconSpaceReserved="false" />
     </androidx.preference.PreferenceCategory>
 </androidx.preference.PreferenceScreen>

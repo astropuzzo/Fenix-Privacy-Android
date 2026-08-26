@@ -49,6 +49,7 @@ def patch_core(target: Path) -> None:
     anchor = "import org.mozilla.fenix.perf.lazyMonitored\n"
     imports = (
         anchor
+        + "import org.mozilla.fenix.privacyhistory.PrivateHistoryActionExecutor\n"
         + "import org.mozilla.fenix.privacyhistory.PrivateHistoryDelegate\n"
         + "import org.mozilla.fenix.privacyhistory.PrivateHistoryPurger\n"
         + "import org.mozilla.fenix.privacyhistory.PrivateHistoryRules\n"
@@ -61,6 +62,13 @@ def patch_core(target: Path) -> None:
         "    val privateHistoryRules by lazyMonitored { PrivateHistoryRules(context) }\n"
         "    val privateHistoryStats by lazyMonitored { PrivateHistoryStats(context) }\n"
         "    val privateHistoryPurger by lazyMonitored { PrivateHistoryPurger(lazyHistoryStorage) }\n\n"
+        "    val privateHistoryActionExecutor by lazyMonitored {\n"
+        "        PrivateHistoryActionExecutor(\n"
+        "            lazy { engine },\n"
+        "            lazy { store },\n"
+        "            lazy { context.components.useCases },\n"
+        "        )\n"
+        "    }\n\n"
         "    /**\n     * The browser engine component"
     )
     s = replace_once(s, class_anchor, class_repl, "Core rules property")
@@ -72,6 +80,7 @@ def patch_core(target: Path) -> None:
         "                privateHistoryRules,\n"
         "                privateHistoryPurger,\n"
         "                privateHistoryStats,\n"
+        "                privateHistoryActionExecutor,\n"
         "            ),",
         "Core history delegate",
     )
@@ -232,9 +241,38 @@ def patch_manifest(target: Path) -> None:
     path = target / "mobile/android/fenix/app/src/main/AndroidManifest.xml"
     s = read(path)
     if "android.permission.REQUEST_INSTALL_PACKAGES" not in s:
-        permission = '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n\n'
+        permission = (
+            '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n'
+            '    <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n\n'
+        )
         s = replace_once(s, "    <application\n", permission + "    <application\n", "Updater install permission")
     receiver = (
+        "\n        <activity\n"
+        "            android:name=\".privacyhistory.PrivateHistoryQuickRuleActivity\"\n"
+        "            android:exported=\"true\"\n"
+        "            android:excludeFromRecents=\"true\"\n"
+        "            android:label=\"@string/private_history_quick_title\">\n"
+        "            <intent-filter>\n"
+        "                <action android:name=\"android.intent.action.SEND\" />\n"
+        "                <category android:name=\"android.intent.category.DEFAULT\" />\n"
+        "                <data android:mimeType=\"text/plain\" />\n"
+        "            </intent-filter>\n"
+        "            <intent-filter>\n"
+        "                <action android:name=\"android.intent.action.PROCESS_TEXT\" />\n"
+        "                <category android:name=\"android.intent.category.DEFAULT\" />\n"
+        "                <data android:mimeType=\"text/plain\" />\n"
+        "            </intent-filter>\n"
+        "        </activity>\n"
+        "\n        <service\n"
+        "            android:name=\".privacyhistory.PrivateHistoryTileService\"\n"
+        "            android:exported=\"true\"\n"
+        "            android:icon=\"@drawable/ic_status_logo\"\n"
+        "            android:label=\"@string/private_history_tile_label\"\n"
+        "            android:permission=\"android.permission.BIND_QUICK_SETTINGS_TILE\">\n"
+        "            <intent-filter>\n"
+        "                <action android:name=\"android.service.quicksettings.action.QS_TILE\" />\n"
+        "            </intent-filter>\n"
+        "        </service>\n"
         "\n        <receiver\n"
         "            android:name=\".privacyhistory.FenixPrivacyDownloadReceiver\"\n"
         "            android:exported=\"false\">\n"
@@ -276,7 +314,19 @@ def patch_gradle(target: Path) -> None:
     )
     s = replace_once(s, marker, custom, "Custom versioning")
     s = replace_once(s, "buildConfigField 'boolean', 'CRASH_REPORTING', 'true'", "buildConfigField 'boolean', 'CRASH_REPORTING', 'false'", "Crash reporting off")
-    s = replace_once(s, "buildConfigField 'boolean', 'TELEMETRY', 'true'", "buildConfigField 'boolean', 'TELEMETRY', 'false'", "Telemetry off")
+    expected_cert = read(ROOT / "SIGNING_CERT_SHA256").strip().replace(":", "").lower()
+    privacy_build_fields = (
+        "buildConfigField 'boolean', 'TELEMETRY', 'false'\n"
+        "    def fenixPrivacyUpstreamRef = System.getenv(\"FENIX_PRIVACY_UPSTREAM_REF\") ?: \"unknown\"\n"
+        "    buildConfigField 'String', 'FENIX_PRIVACY_UPSTREAM_REF', '\"' + fenixPrivacyUpstreamRef + '\"'\n"
+        f"    buildConfigField 'String', 'FENIX_PRIVACY_SIGNING_CERT_SHA256', '\"{expected_cert}\"'"
+    )
+    s = replace_once(
+        s,
+        "buildConfigField 'boolean', 'TELEMETRY', 'true'",
+        privacy_build_fields,
+        "Telemetry off and privacy build metadata",
+    )
     write(path, s)
 
 
