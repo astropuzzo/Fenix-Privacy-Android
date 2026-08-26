@@ -31,12 +31,14 @@ class PrivateHistoryCleanerTest {
     @Before
     fun setUp() {
         prefs.edit().clear().commit()
+        PrivateHistoryStats(testContext).reset()
         prefs.edit().putString(PrivateHistoryRules.KEY_KEYWORDS, "blocked phrase").commit()
     }
 
     @After
     fun tearDown() {
         prefs.edit().clear().commit()
+        PrivateHistoryStats(testContext).reset()
     }
 
     @Test
@@ -49,11 +51,13 @@ class PrivateHistoryCleanerTest {
         coEvery { storage.getHistoryMetadataSince(0L) } returns listOf(
             metadata(url = url, searchTerm = "blocked phrase"),
         )
+        val stats = PrivateHistoryStats(testContext)
 
-        val removed = PrivateHistoryCleaner(storage, PrivateHistoryRules(testContext))
+        val removed = PrivateHistoryCleaner(storage, PrivateHistoryRules(testContext), stats)
             .purgeMatchingHistory()
 
         assertEquals(1, removed)
+        assertEquals(1L, stats.snapshot().removedDuringCleanup)
         coVerify(exactly = 1) { storage.deleteVisitsFor(url) }
         coVerify(exactly = 1) { storage.deleteHistoryMetadataForUrl(url) }
     }
@@ -66,11 +70,13 @@ class PrivateHistoryCleanerTest {
             visit(url = url, title = "A blocked phrase appears", isRemote = false),
         )
         coEvery { storage.getHistoryMetadataSince(0L) } returns emptyList()
+        val stats = PrivateHistoryStats(testContext)
 
-        val removed = PrivateHistoryCleaner(storage, PrivateHistoryRules(testContext))
+        val removed = PrivateHistoryCleaner(storage, PrivateHistoryRules(testContext), stats)
             .purgeMatchingHistory()
 
         assertEquals(1, removed)
+        assertEquals(1L, stats.snapshot().removedDuringCleanup)
         coVerify(exactly = 1) { storage.deleteVisitsFor(url) }
         coVerify(exactly = 1) { storage.deleteHistoryMetadataForUrl(url) }
     }

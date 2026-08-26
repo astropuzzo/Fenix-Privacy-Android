@@ -14,6 +14,7 @@ class PrivateHistoryDelegate(
     private val historyStorage: Lazy<PlacesHistoryStorage>,
     private val rules: PrivateHistoryRules,
     private val purger: PrivateHistoryPurger,
+    private val stats: PrivateHistoryStats,
 ) : HistoryTrackingDelegate {
     override suspend fun onVisited(uri: String, visit: PageVisit) {
         if (!shouldStoreUri(uri)) {
@@ -25,6 +26,7 @@ class PrivateHistoryDelegate(
 
     override suspend fun onTitleChanged(uri: String, title: String) {
         if (rules.shouldBlockVisit(uri, title)) {
+            stats.recordRemovedAfterMatch(uri)
             purgeUri(uri)
             return
         }
@@ -48,6 +50,7 @@ class PrivateHistoryDelegate(
 
     override fun shouldStoreUri(uri: String): Boolean {
         if (rules.shouldBlockUri(uri)) {
+            stats.recordPreventedBeforeWrite(uri)
             // Gecko calls this before onVisited, so schedule deletion here as well. This removes
             // any older or synced visits for the URL even though the new visit is never recorded.
             purger.purgeAsync(uri)

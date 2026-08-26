@@ -31,18 +31,35 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
         configureRuleEditor(PrivateHistoryRules.KEY_KEYWORDS, R.string.private_history_none_keywords)
         configureRuleEditor(PrivateHistoryRules.KEY_REGEX, R.string.private_history_none_regex)
 
+        findPreference<Preference>(KEY_STATS_RESET)?.setOnPreferenceClickListener {
+            requireComponents.core.privateHistoryStats.reset()
+            refreshStats()
+            Toast.makeText(
+                requireContext(),
+                R.string.private_history_stats_reset_done,
+                Toast.LENGTH_SHORT,
+            ).show()
+            true
+        }
+
         findPreference<Preference>("private_history_cleanup")?.setOnPreferenceClickListener { preference ->
             preference.isEnabled = false
             preference.summary = getString(R.string.private_history_cleanup_running)
 
             viewLifecycleOwner.lifecycleScope.launch {
                 val rules = PrivateHistoryRules(requireContext())
+                val core = requireComponents.core
                 val removed = withContext(Dispatchers.IO) {
-                    PrivateHistoryCleaner(requireComponents.core.historyStorage, rules).purgeMatchingHistory()
+                    PrivateHistoryCleaner(
+                        core.historyStorage,
+                        rules,
+                        core.privateHistoryStats,
+                    ).purgeMatchingHistory()
                 }
 
                 preference.isEnabled = true
                 preference.summary = getString(R.string.private_history_cleanup_summary)
+                refreshStats()
                 Toast.makeText(
                     requireContext(),
                     resources.getQuantityString(
@@ -60,6 +77,7 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
     override fun onResume() {
         super.onResume()
         showToolbar(getString(R.string.private_history_title))
+        refreshStats()
     }
 
     override fun onPause() {
@@ -90,5 +108,21 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
                 }
             }
         }
+    }
+
+    private fun refreshStats() {
+        val snapshot = requireComponents.core.privateHistoryStats.snapshot()
+        findPreference<Preference>(KEY_STATS_COUNTER)?.summary = getString(
+            R.string.private_history_stats_summary,
+            snapshot.total,
+            snapshot.preventedBeforeWrite,
+            snapshot.removedAfterMatch,
+            snapshot.removedDuringCleanup,
+        )
+    }
+
+    companion object {
+        private const val KEY_STATS_COUNTER = "private_history_stats_counter"
+        private const val KEY_STATS_RESET = "private_history_stats_reset"
     }
 }

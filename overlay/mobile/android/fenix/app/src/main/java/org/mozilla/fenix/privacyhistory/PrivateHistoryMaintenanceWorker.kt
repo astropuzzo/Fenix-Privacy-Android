@@ -26,6 +26,7 @@ class PrivateHistoryMaintenanceWorker(
             PrivateHistoryCleaner(
                 app.components.core.historyStorage,
                 PrivateHistoryRules(applicationContext),
+                app.components.core.privateHistoryStats,
             ).purgeMatchingHistory()
         }.fold(
             onSuccess = { Result.success() },
