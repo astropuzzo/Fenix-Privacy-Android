@@ -158,7 +158,7 @@ class PrivateHistoryRules(
                 host != null && normalizeDomain(rule.value)?.let { domainMatches(host, it) } == true
             PrivateHistoryRule.Matcher.DOMAIN_EXCEPT_ROOT ->
                 host != null && normalizeDomain(rule.value)?.let { domainMatches(host, it) } == true &&
-                    (path != "/" || !parsed?.rawQuery.isNullOrBlank() || !parsed?.rawFragment.isNullOrBlank())
+                    (path != "/" || !parsed.rawQuery.isNullOrBlank() || !parsed.rawFragment.isNullOrBlank())
             PrivateHistoryRule.Matcher.PATH_PREFIX -> pathPrefixMatches(host, path, rule.value)
             PrivateHistoryRule.Matcher.URL_CONTAINS ->
                 matchUrl && keywordMatches(normalizeCase(normalizedUri), normalizeCase(rule.value))
