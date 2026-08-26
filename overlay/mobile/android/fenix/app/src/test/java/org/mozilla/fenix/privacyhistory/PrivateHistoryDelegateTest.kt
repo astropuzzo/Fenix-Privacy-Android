@@ -127,4 +127,74 @@ class PrivateHistoryDelegateTest {
         coVerify(exactly = 1) { storage.deleteVisitsFor(url) }
         coVerify(exactly = 1) { storage.deleteHistoryMetadataForUrl(url) }
     }
+
+    @Test
+    fun `collapse rule records only the site root`() = runTest {
+        prefs.edit().putString(
+            PrivateHistoryRules.KEY_VISUAL_RULES,
+            PrivateHistoryRule.encode(
+                listOf(
+                    PrivateHistoryRule(
+                        name = "Collapse site",
+                        matcher = PrivateHistoryRule.Matcher.DOMAIN_EXCEPT_ROOT,
+                        value = "example.com",
+                        action = PrivateHistoryRule.Action.COLLAPSE_TO_ROOT,
+                    ),
+                ),
+            ),
+        ).commit()
+        val storage = mockk<PlacesHistoryStorage>(relaxed = true)
+        every { storage.canAddUri(any()) } returns true
+        val lazyStorage = lazy { storage }
+        val stats = PrivateHistoryStats(testContext)
+        val delegate = PrivateHistoryDelegate(
+            lazyStorage,
+            PrivateHistoryRules(testContext),
+            PrivateHistoryPurger(lazyStorage, this),
+            stats,
+        )
+        val url = "https://example.com/threads/private"
+        val visit = PageVisit(VisitType.LINK)
+
+        assertTrue(delegate.shouldStoreUri(url))
+        delegate.onVisited(url, visit)
+
+        coVerify(exactly = 0) { storage.recordVisit(url, any()) }
+        coVerify(exactly = 1) { storage.recordVisit("https://example.com/", visit) }
+        coVerify(exactly = 1) { storage.deleteVisitsFor(url) }
+        assertEquals(1L, stats.snapshot().collapsedToRoot)
+    }
+
+    @Test
+    fun `title collapse replaces an already recorded page with its site root`() = runTest {
+        prefs.edit().putString(
+            PrivateHistoryRules.KEY_VISUAL_RULES,
+            PrivateHistoryRule.encode(
+                listOf(
+                    PrivateHistoryRule(
+                        name = "Collapse matching title",
+                        matcher = PrivateHistoryRule.Matcher.TITLE_CONTAINS,
+                        value = "private title",
+                        action = PrivateHistoryRule.Action.COLLAPSE_TO_ROOT,
+                    ),
+                ),
+            ),
+        ).commit()
+        val storage = mockk<PlacesHistoryStorage>(relaxed = true)
+        every { storage.canAddUri(any()) } returns true
+        val lazyStorage = lazy { storage }
+        val delegate = PrivateHistoryDelegate(
+            lazyStorage,
+            PrivateHistoryRules(testContext),
+            PrivateHistoryPurger(lazyStorage, this),
+            PrivateHistoryStats(testContext),
+        )
+        val url = "https://example.com/threads/private"
+
+        delegate.onTitleChanged(url, "A private title")
+
+        coVerify(exactly = 1) { storage.recordVisit("https://example.com/", any()) }
+        coVerify(exactly = 1) { storage.deleteVisitsFor(url) }
+        coVerify(exactly = 1) { storage.deleteHistoryMetadataForUrl(url) }
+    }
 }

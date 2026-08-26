@@ -21,6 +21,11 @@ There is no separate macOS/Linux package: Firefox uses the same Mozilla-signed X
 
 ## Features
 
+- **Privacy Studio 2.0:** visual rule builder with allowlist exceptions, profiles, expirations, path/query/title matchers and exact URL rules.
+- **Homepage-only rules:** block everything except a clean site root, or collapse internal visits so history records only the homepage.
+- **Quick rules:** create a rule from Android's share sheet or Firefox Desktop's page context menu.
+- **Temporary shields:** block all history for 15 minutes, one hour or the current app session; Desktop also supports one tab until it closes.
+- **Private tester and cleanup preview:** decisions and aggregate counts are shown without storing or listing tested/matching URLs.
 - Domain blacklist: exact domains and all subdomains.
 - Keyword/phrase blacklist: URL, decoded search query and page-title matching.
 - Optional regular expressions, case sensitivity and whole-word matching.
@@ -29,18 +34,27 @@ There is no separate macOS/Linux package: Firefox uses the same Mozilla-signed X
 - Sync scrubber: scrubs matching records at startup and every 15 minutes if they arrive from another Firefox through Sync.
 - One-tap cleanup of existing matching local history.
 - Device-local privacy counter: aggregate totals for pre-write blocks, title/search scrubs and startup/Sync cleanup. URLs, titles, queries and rules are never stored in the counter.
-- Cookies, site data, login sessions and cache are deliberately left untouched, so protected sites can remain signed in.
+- Dashboard: aggregate today/week/total/collapse counters, milestones, live shield state and an optional Android Quick Settings tile.
+- **Cookies and logins stay saved by default.** Site data, sessions, cache, downloads and tabs are untouched unless an optional action is explicitly enabled on one visual rule.
+- AES-256-GCM `.fprules` bundles move rules between Android and Desktop without including history or counters; Desktop can push/pull the encrypted bundle through Firefox Sync.
+- Device biometric/PIN protection for the Android rule screen.
+- Automatic and on-demand privacy integrity self-tests after Mozilla updates.
 - Separate Android package: `io.github.astropuzzo.fenixprivacy`, so official Firefox can stay installed.
 - Firefox Accounts/Sync code retained from upstream Fenix.
 - Mozilla telemetry/crash reporting disabled for the custom build.
 - Built-in updater: checks GitHub releases, automatically downloads a newer APK, verifies SHA-256, then hands it to Android for the required installation confirmation.
 - Stable-upstream CI: tracks Firefox stable release tags, not Nightly commits.
 
+See [Privacy Studio 2.0](docs/PRIVACY_STUDIO_V2.md) for all 15 features, matcher semantics and privacy guarantees.
+
 ## Firefox Desktop (Windows, macOS and Linux)
 
 This repository also contains **Fenix Privacy Desktop**, a Firefox WebExtension under [`desktop/firefox-extension`](desktop/firefox-extension). It mirrors the selective-history behavior on Firefox for Windows, macOS and Linux:
 
 - domain/subdomain, keyword/phrase and regular-expression rules;
+- visual allow/block/collapse rules, profiles, temporary per-tab mode and quick page actions;
+- encrypted Android-compatible import/export and encrypted Firefox Sync transport;
+- toolbar shield badge, aggregate dashboard, cleanup preview and integrity self-test;
 - immediate deletion on history/navigation events plus title-based cleanup after page load;
 - full-history scrub on demand, at startup and every 15+ minutes;
 - rules local by default, with opt-in Firefox `storage.sync` after Firefox's built-in consent;

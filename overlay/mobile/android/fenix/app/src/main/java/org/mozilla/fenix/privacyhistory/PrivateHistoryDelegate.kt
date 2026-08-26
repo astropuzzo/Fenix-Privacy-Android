@@ -8,6 +8,7 @@ import mozilla.components.browser.storage.sync.PlacesHistoryStorage
 import mozilla.components.concept.engine.history.HistoryTrackingDelegate
 import mozilla.components.concept.storage.PageObservation
 import mozilla.components.concept.storage.PageVisit
+import mozilla.components.concept.storage.VisitType
 
 /** Filters visits before Places receives them. */
 class PrivateHistoryDelegate(
@@ -15,22 +16,46 @@ class PrivateHistoryDelegate(
     private val rules: PrivateHistoryRules,
     private val purger: PrivateHistoryPurger,
     private val stats: PrivateHistoryStats,
+    private val actionExecutor: PrivateHistoryActionExecutor? = null,
 ) : HistoryTrackingDelegate {
     override suspend fun onVisited(uri: String, visit: PageVisit) {
-        if (!shouldStoreUri(uri)) {
-            purgeUri(uri)
-            return
+        val decision = rules.decide(uri)
+        when (decision.action) {
+            PrivateHistoryRule.Action.ALLOW -> historyStorage.value.recordVisit(uri, visit)
+            PrivateHistoryRule.Action.BLOCK -> purgeUri(uri)
+            PrivateHistoryRule.Action.COLLAPSE_TO_ROOT -> {
+                val target = decision.collapsedUri
+                if (!target.isNullOrBlank() && target != uri && historyStorage.value.canAddUri(target)) {
+                    historyStorage.value.recordVisit(target, visit)
+                    stats.recordCollapsedToRoot(uri)
+                } else {
+                    stats.recordPreventedBeforeWrite(uri)
+                }
+                purgeUri(uri)
+            }
         }
-        historyStorage.value.recordVisit(uri, visit)
+        if (decision.suppressesOriginal) actionExecutor?.execute(uri, decision.matchedRule)
     }
 
     override suspend fun onTitleChanged(uri: String, title: String) {
-        if (rules.shouldBlockVisit(uri, title)) {
-            stats.recordRemovedAfterMatch(uri)
-            purgeUri(uri)
-            return
+        val decision = rules.decide(uri, title)
+        when (decision.action) {
+            PrivateHistoryRule.Action.ALLOW ->
+                historyStorage.value.recordObservation(uri, PageObservation(title = title))
+            PrivateHistoryRule.Action.BLOCK -> {
+                stats.recordRemovedAfterMatch(uri)
+                purgeUri(uri)
+                actionExecutor?.execute(uri, decision.matchedRule)
+            }
+            PrivateHistoryRule.Action.COLLAPSE_TO_ROOT -> {
+                decision.collapsedUri
+                    ?.takeIf { it != uri && historyStorage.value.canAddUri(it) }
+                    ?.let { historyStorage.value.recordVisit(it, PageVisit(VisitType.LINK)) }
+                stats.recordCollapsedToRoot(uri)
+                purgeUri(uri)
+                actionExecutor?.execute(uri, decision.matchedRule)
+            }
         }
-        historyStorage.value.recordObservation(uri, PageObservation(title = title))
     }
 
     override suspend fun onPreviewImageChange(uri: String, previewImageUrl: String) {
@@ -49,14 +74,21 @@ class PrivateHistoryDelegate(
         historyStorage.value.getVisited().filterNot(rules::shouldBlockUri)
 
     override fun shouldStoreUri(uri: String): Boolean {
-        if (rules.shouldBlockUri(uri)) {
-            stats.recordPreventedBeforeWrite(uri)
-            // Gecko calls this before onVisited, so schedule deletion here as well. This removes
-            // any older or synced visits for the URL even though the new visit is never recorded.
-            purger.purgeAsync(uri)
-            return false
+        val decision = rules.decide(uri)
+        return when (decision.action) {
+            PrivateHistoryRule.Action.ALLOW -> historyStorage.value.canAddUri(uri)
+            PrivateHistoryRule.Action.BLOCK -> {
+                stats.recordPreventedBeforeWrite(uri)
+                // Gecko calls this before onVisited. Remove older/synced visits too.
+                purger.purgeAsync(uri)
+                actionExecutor?.execute(uri, decision.matchedRule)
+                false
+            }
+            PrivateHistoryRule.Action.COLLAPSE_TO_ROOT -> {
+                // Returning true lets onVisited replace the specific URL with the site root.
+                decision.collapsedUri?.let(historyStorage.value::canAddUri) == true
+            }
         }
-        return historyStorage.value.canAddUri(uri)
     }
 
     private suspend fun purgeUri(uri: String) = purger.purge(uri)

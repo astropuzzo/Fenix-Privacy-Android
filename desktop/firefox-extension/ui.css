@@ -4,7 +4,7 @@ body { margin: 0; background: Canvas; color: CanvasText; }
 .popup { width: 320px; padding: 16px; }
 .popup header, .hero, .actions, .switch-row, .stat { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .popup button { width: 100%; margin-top: 10px; }
-.options main { max-width: 920px; margin: 0 auto; padding: 32px 20px 64px; }
+.options main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 96px; }
 .hero { align-items: flex-start; margin-bottom: 24px; }
 h1 { margin: 0 0 6px; font-size: 28px; } h2 { margin-top: 0; font-size: 18px; }
 p { margin: 6px 0 12px; opacity: .8; }
@@ -13,7 +13,7 @@ p { margin: 6px 0 12px; opacity: .8; }
 .switch-row { min-height: 44px; }
 .switch-row span { display: grid; gap: 2px; }
 small { display: block; opacity: .7; font-weight: 400; }
-textarea, input[type="text"], input[type="url"], input[type="number"] { width: 100%; margin-top: 7px; border-radius: 8px; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); padding: 9px 10px; background: Canvas; color: CanvasText; }
+textarea, input[type="text"], input[type="url"], input[type="number"], input[type="password"], select { width: 100%; margin-top: 7px; border-radius: 8px; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); padding: 9px 10px; background: Canvas; color: CanvasText; }
 textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 button, .file-button { border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 8px; padding: 9px 12px; background: color-mix(in srgb, Canvas 86%, CanvasText 14%); color: CanvasText; cursor: pointer; font: inherit; }
 .primary { font-weight: 650; }
@@ -22,5 +22,20 @@ button, .file-button { border: 1px solid color-mix(in srgb, CanvasText 22%, tran
 .badge { border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 999px; padding: 3px 8px; font-size: 12px; white-space: nowrap; }
 .stat { margin: 12px 0; padding: 10px 0; border-top: 1px solid color-mix(in srgb, CanvasText 14%, transparent); border-bottom: 1px solid color-mix(in srgb, CanvasText 14%, transparent); }
 .status { min-height: 20px; margin: 10px 0 0; }
+.status.error { color: #d33; }
 code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.metric { display: grid; gap: 4px; padding: 12px; border-radius: 10px; background: color-mix(in srgb, CanvasText 7%, transparent); }
+.metric strong { font-size: 22px; }.metric span { opacity: .72; }.metric.wide { grid-column: 1 / -1; }
+.section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.accent-card { border-color: color-mix(in srgb, #6e5df6 55%, CanvasText 15%); box-shadow: 0 10px 32px color-mix(in srgb, #6e5df6 12%, transparent); }
+.rule-list { display: grid; gap: 8px; margin-top: 16px; }
+.rule-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid color-mix(in srgb, CanvasText 14%, transparent); border-radius: 10px; padding: 11px 12px; }
+.rule-row > div:first-child { display: grid; gap: 3px; min-width: 0; }.rule-row small { overflow-wrap: anywhere; }
+.rule-row.paused { opacity: .58; }.actions.compact { margin: 0; flex-wrap: nowrap; }.actions.compact button { padding: 6px 8px; }
+.empty-state { padding: 12px; text-align: center; border: 1px dashed color-mix(in srgb, CanvasText 20%, transparent); border-radius: 9px; }
+.danger-options { margin-top: 14px; border: 1px solid color-mix(in srgb, #d55 35%, transparent); border-radius: 9px; padding: 10px 12px; }
+details > summary { cursor: pointer; }.bottom-actions { align-items: end; height: 100%; }
+.sticky-status { position: sticky; bottom: 0; z-index: 3; padding: 12px; border-radius: 9px; background: color-mix(in srgb, Canvas 88%, CanvasText 12%); box-shadow: 0 -5px 18px color-mix(in srgb, CanvasText 12%, transparent); }
 @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } .hero { display: block; } .hero .badge { display: inline-block; margin-top: 8px; } }
+@media (max-width: 720px) { .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rule-row { align-items: flex-start; flex-direction: column; }.actions.compact { flex-wrap: wrap; } }

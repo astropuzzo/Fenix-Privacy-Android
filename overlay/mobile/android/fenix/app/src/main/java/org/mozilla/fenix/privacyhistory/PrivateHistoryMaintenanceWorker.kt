@@ -5,6 +5,7 @@
 package org.mozilla.fenix.privacyhistory
 
 import android.content.Context
+import androidx.preference.PreferenceManager
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -28,6 +29,13 @@ class PrivateHistoryMaintenanceWorker(
                 PrivateHistoryRules(applicationContext),
                 app.components.core.privateHistoryStats,
             ).purgeMatchingHistory()
+            val selfTest = PrivateHistorySelfTest.run(applicationContext)
+            PreferenceManager.getDefaultSharedPreferences(applicationContext).edit()
+                .putLong(KEY_SELF_TEST_AT, System.currentTimeMillis())
+                .putInt(KEY_SELF_TEST_PASSED, selfTest.passed)
+                .putInt(KEY_SELF_TEST_TOTAL, selfTest.total)
+                .putBoolean(KEY_SELF_TEST_OK, selfTest.ok)
+                .apply()
         }.fold(
             onSuccess = { Result.success() },
             onFailure = { Result.retry() },
@@ -37,6 +45,10 @@ class PrivateHistoryMaintenanceWorker(
     companion object {
         private const val PERIODIC_NAME = "fenix-privacy-history-scrub"
         private const val STARTUP_NAME = "fenix-privacy-history-startup-scrub"
+        const val KEY_SELF_TEST_AT = "fenix_privacy_self_test_at"
+        const val KEY_SELF_TEST_PASSED = "fenix_privacy_self_test_passed"
+        const val KEY_SELF_TEST_TOTAL = "fenix_privacy_self_test_total"
+        const val KEY_SELF_TEST_OK = "fenix_privacy_self_test_ok"
 
         fun schedule(context: Context) {
             val manager = WorkManager.getInstance(context)

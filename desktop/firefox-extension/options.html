@@ -3,61 +3,78 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Fenix Privacy Desktop — Rules</title>
+  <title>Fenix Privacy Studio</title>
   <link rel="stylesheet" href="ui.css">
 </head>
 <body class="options">
   <main>
-    <header class="hero">
-      <div><h1>Fenix Privacy Desktop</h1><p>Keep normal Firefox history, except for the things you explicitly blacklist.</p></div>
-      <span class="badge">Firefox Desktop</span>
-    </header>
+    <div class="hero">
+      <div><h1>Fenix Privacy Studio</h1><p>Keep useful history. Hide only what you choose. Cookies and sessions stay saved by default.</p></div>
+      <span class="badge">Desktop 2.0</span>
+    </div>
+
+    <section class="card dashboard-grid">
+      <div class="metric"><span>Total protected</span><strong id="metricTotal">0</strong></div>
+      <div class="metric"><span>Today</span><strong id="metricToday">0</strong></div>
+      <div class="metric"><span>This week</span><strong id="metricWeek">0</strong></div>
+      <div class="metric"><span>Collapsed</span><strong id="metricCollapsed">0</strong></div>
+      <div class="metric wide"><span>Integrity</span><strong id="metricHealth">Checking…</strong></div>
+    </section>
 
     <section class="card grid2">
-      <label class="switch-row"><span><strong>Protection enabled</strong><small>Delete matching history automatically.</small></span><input id="enabled" type="checkbox"></label>
-      <label class="switch-row"><span><strong>Clean on Firefox startup</strong><small>Also catches entries synced from another desktop.</small></span><input id="scrubOnStartup" type="checkbox"></label>
-      <label class="switch-row"><span><strong>Case sensitive</strong><small>Applies to keywords and regex.</small></span><input id="caseSensitive" type="checkbox"></label>
+      <label class="switch-row"><span><strong>History protection</strong><small>Master switch for every rule.</small></span><input id="enabled" type="checkbox"></label>
+      <label class="switch-row"><span><strong>Clean on Firefox startup</strong><small>Catches entries returned through Sync.</small></span><input id="scrubOnStartup" type="checkbox"></label>
+      <label class="switch-row"><span><strong>Case sensitive</strong><small>Applies to words and regular expressions.</small></span><input id="caseSensitive" type="checkbox"></label>
       <label class="switch-row"><span><strong>Whole words</strong><small>Avoid partial keyword matches.</small></span><input id="wholeWord" type="checkbox"></label>
-      <label class="switch-row"><span><strong>Sync rules with Mozilla Account</strong><small>Optional. Uses Firefox Sync only after Firefox grants the built-in data-transmission consent.</small></span><input id="syncRules" type="checkbox"></label>
     </section>
 
-    <section class="card">
-      <h2>Domains</h2><p>One per line. A rule also matches all subdomains. Example: <code>example.com</code></p>
-      <textarea id="domains" rows="7" spellcheck="false"></textarea>
-    </section>
-
-    <section class="card">
-      <h2>Words and phrases</h2><p>Matched against URL, decoded query parameters, and page title.</p>
-      <textarea id="keywords" rows="8" spellcheck="false"></textarea>
-    </section>
-
-    <section class="card">
-      <h2>Regular expressions</h2><p>One JavaScript-compatible regular expression per line. Invalid expressions are ignored.</p>
-      <textarea id="regex" rows="7" spellcheck="false"></textarea>
+    <section class="card accent-card">
+      <div class="section-head"><div><h2>Visual rule builder</h2><p>No regex required. Allow rules always win over normal lists.</p></div><span class="badge">New</span></div>
+      <div class="grid2">
+        <label>Rule name<input id="ruleName" type="text" placeholder="Keep homepage only"></label>
+        <label>Profile<input id="ruleProfile" type="text" value="Default"></label>
+        <label>Match
+          <select id="ruleMatcher">
+            <option value="DOMAIN">Whole domain and subdomains</option>
+            <option value="DOMAIN_EXCEPT_ROOT">Everything except the homepage</option>
+            <option value="PATH_PREFIX">Path or section prefix</option>
+            <option value="URL_CONTAINS">Word or phrase in URL</option>
+            <option value="TITLE_CONTAINS">Word or phrase in title</option>
+            <option value="QUERY_PARAMETER">Search/query parameter</option>
+            <option value="REGEX">Regular expression</option>
+            <option value="EXACT_URL">Exact URL</option>
+          </select>
+        </label>
+        <label>Value<input id="ruleValue" type="text" placeholder="example.com or example.com/threads"></label>
+        <label id="queryParameterRow">Query parameter name<input id="ruleQueryParameter" type="text" placeholder="q"></label>
+        <label>History action
+          <select id="ruleAction">
+            <option value="ALLOW">Always allow and save</option>
+            <option value="BLOCK" selected>Never save</option>
+            <option value="COLLAPSE_TO_ROOT">Save only the homepage</option>
+          </select>
+        </label>
+        <label>Expires after minutes<input id="ruleExpiry" type="number" min="1" placeholder="Blank = never"></label>
+      </div>
+      <details class="danger-options"><summary>Optional destructive actions</summary>
+        <p>These are off by default and require extra Firefox permissions.</p>
+        <div class="grid2">
+          <label class="switch-row"><span>Clear site cookies, login and storage</span><input id="ruleClearCookies" type="checkbox"></label>
+          <label class="switch-row"><span>Clear browser cache</span><input id="ruleClearCache" type="checkbox"></label>
+          <label class="switch-row"><span>Erase matching entries from download list</span><input id="ruleClearDownloads" type="checkbox"></label>
+          <label class="switch-row"><span>Close matching tab</span><input id="ruleCloseTab" type="checkbox"></label>
+        </div>
+      </details>
+      <div class="actions"><button id="addRule" class="primary">Add rule</button><button id="cancelEdit" hidden>Cancel edit</button></div>
+      <div id="visualRuleList" class="rule-list"></div>
     </section>
 
     <section class="card grid2">
-      <label><strong>Periodic scrub interval</strong><small>Minimum 15 minutes.</small><input id="scrubEveryMinutes" type="number" min="15" step="1"></label>
-      <div><strong>Firefox Sync</strong><small>When enabled above, rule preferences use <code>storage.sync</code>. Firefox desktop also needs Add-ons enabled in Sync.</small></div>
-    </section>
-
-    <section class="card">
-      <h2>Test a page</h2>
-      <label>URL<input id="testUrl" type="url" placeholder="https://example.com/search?q=private"></label>
-      <label>Optional title<input id="testTitle" type="text" placeholder="Page title"></label>
-      <div class="actions"><button id="test">Test current rules</button><strong id="testResult"></strong></div>
-    </section>
-
-    <section class="card">
-      <div class="actions wrap">
-        <button id="save" class="primary">Save rules</button>
-        <button id="clean">Save + clean matching history</button>
-        <button id="export">Export JSON</button>
-        <label class="file-button">Import JSON<input id="import" type="file" accept="application/json,.json"></label>
+      <label><strong>Active profiles</strong><small>One per line. Rules in paused profiles do nothing.</small><textarea id="activeProfiles" rows="5">Default</textarea></label>
+      <div><h2>Temporary protection</h2><p>Cookie and login state remains available.</p>
+        <div class="actions wrap"><button data-temp="15">15 minutes</button><button data-temp="60">1 hour</button><button data-temp="session">Until Firefox closes</button><button data-temp="off">Stop</button></div>
+        <strong id="temporaryStatus">Off</strong>
       </div>
-      <p id="status" class="status"></p>
     </section>
-  </main>
-  <script src="options.js"></script>
-</body>
-</html>
+
+    <details class="card"><summary><str

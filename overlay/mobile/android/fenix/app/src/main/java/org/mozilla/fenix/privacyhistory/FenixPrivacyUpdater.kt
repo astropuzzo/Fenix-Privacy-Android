@@ -43,6 +43,7 @@ import org.mozilla.fenix.R
 object FenixPrivacyUpdater {
     private const val PERIODIC_NAME = "fenix-privacy-update-check"
     private const val STARTUP_NAME = "fenix-privacy-update-startup"
+    private const val MANUAL_NAME = "fenix-privacy-update-manual"
 
     fun schedule(context: Context) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
@@ -67,21 +68,69 @@ object FenixPrivacyUpdater {
                 .build(),
         )
     }
+
+    fun checkNow(context: Context) {
+        val network = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            MANUAL_NAME,
+            ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<FenixPrivacyUpdateWorker>().setConstraints(network).build(),
+        )
+    }
+
+    fun snapshot(context: Context): UpdateSnapshot {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        return UpdateSnapshot(
+            lastCheckAt = prefs.getLong(KEY_LAST_CHECK_AT, 0L),
+            lastStatus = prefs.getString(KEY_LAST_UPDATE_STATUS, STATUS_NEVER).orEmpty(),
+            availableVersion = prefs.getString(KEY_AVAILABLE_VERSION, "").orEmpty(),
+            lastError = prefs.getString(KEY_LAST_UPDATE_ERROR, "").orEmpty(),
+            queuedVersion = prefs.getLong(KEY_QUEUED_VERSION, 0L),
+            releaseNotesUrl = prefs.getString(KEY_RELEASE_NOTES_URL, "").orEmpty(),
+            upstreamRef = prefs.getString(KEY_FEED_UPSTREAM_REF, "").orEmpty(),
+        )
+    }
 }
+
+data class UpdateSnapshot(
+    val lastCheckAt: Long,
+    val lastStatus: String,
+    val availableVersion: String,
+    val lastError: String,
+    val queuedVersion: Long,
+    val releaseNotesUrl: String,
+    val upstreamRef: String,
+)
 
 class FenixPrivacyUpdateWorker(
     appContext: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
+        prefs.edit {
+            putString(KEY_LAST_UPDATE_STATUS, STATUS_CHECKING)
+            remove(KEY_LAST_UPDATE_ERROR)
+        }
         runCatching {
-            val metadata = fetchMetadata() ?: return@runCatching Result.success()
+            val metadata = fetchMetadata() ?: error("Release feed unavailable")
             val currentCode = currentVersionCode(applicationContext)
-            if (metadata.versionCode <= currentCode) return@runCatching Result.success()
+            prefs.edit {
+                putLong(KEY_LAST_CHECK_AT, System.currentTimeMillis())
+                putString(KEY_AVAILABLE_VERSION, metadata.versionName)
+                putString(KEY_RELEASE_NOTES_URL, metadata.releaseNotesUrl)
+                putString(KEY_FEED_UPSTREAM_REF, metadata.upstreamRef)
+            }
+            if (metadata.versionCode <= currentCode) {
+                prefs.edit { putString(KEY_LAST_UPDATE_STATUS, STATUS_CURRENT) }
+                return@runCatching Result.success()
+            }
 
-            val prefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
             val alreadyQueued = prefs.getLong(KEY_QUEUED_VERSION, 0L)
-            if (alreadyQueued >= metadata.versionCode) return@runCatching Result.success()
+            if (alreadyQueued >= metadata.versionCode) {
+                prefs.edit { putString(KEY_LAST_UPDATE_STATUS, STATUS_QUEUED) }
+                return@runCatching Result.success()
+            }
 
             val manager = applicationContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val request = DownloadManager.Request(Uri.parse(metadata.apkUrl))
@@ -103,9 +152,17 @@ class FenixPrivacyUpdateWorker(
                 putLong(KEY_QUEUED_VERSION, metadata.versionCode)
                 putString(KEY_EXPECTED_SHA256, metadata.sha256.lowercase())
                 putString(KEY_QUEUED_VERSION_NAME, metadata.versionName)
+                putString(KEY_LAST_UPDATE_STATUS, STATUS_DOWNLOADING)
             }
             Result.success()
-        }.getOrElse { Result.retry() }
+        }.getOrElse { error ->
+            prefs.edit {
+                putLong(KEY_LAST_CHECK_AT, System.currentTimeMillis())
+                putString(KEY_LAST_UPDATE_STATUS, STATUS_ERROR)
+                putString(KEY_LAST_UPDATE_ERROR, error.javaClass.simpleName)
+            }
+            Result.retry()
+        }
     }
 
     private fun fetchMetadata(): UpdateMetadata? {
@@ -122,6 +179,8 @@ class FenixPrivacyUpdateWorker(
                 versionName = json.getString("versionName"),
                 apkUrl = json.getString("apkUrl"),
                 sha256 = json.getString("sha256"),
+                releaseNotesUrl = json.optString("releaseNotesUrl"),
+                upstreamRef = json.optString("upstreamRef"),
             )
         } finally {
             connection.disconnect()
@@ -142,6 +201,7 @@ class FenixPrivacyDownloadReceiver : BroadcastReceiver() {
         if (uri == null) {
             // DOWNLOAD_COMPLETE is also broadcast for failed downloads. Allow the next worker to retry.
             clearQueuedUpdate(prefs)
+            prefs.edit { putString(KEY_LAST_UPDATE_STATUS, STATUS_ERROR) }
             return
         }
 
@@ -149,10 +209,15 @@ class FenixPrivacyDownloadReceiver : BroadcastReceiver() {
         if (expectedSha.isBlank() || !sha256Matches(context, uri, expectedSha)) {
             manager.remove(completedId)
             clearQueuedUpdate(prefs)
+            prefs.edit {
+                putString(KEY_LAST_UPDATE_STATUS, STATUS_ERROR)
+                putString(KEY_LAST_UPDATE_ERROR, "SHA-256 verification failed")
+            }
             return
         }
 
         val versionName = prefs.getString(KEY_QUEUED_VERSION_NAME, "").orEmpty()
+        prefs.edit { putString(KEY_LAST_UPDATE_STATUS, STATUS_READY) }
         showInstallNotification(context, uri, versionName)
     }
 }
@@ -171,6 +236,8 @@ private data class UpdateMetadata(
     val versionName: String,
     val apkUrl: String,
     val sha256: String,
+    val releaseNotesUrl: String,
+    val upstreamRef: String,
 )
 
 @Suppress("DEPRECATION")
@@ -239,3 +306,16 @@ private const val KEY_DOWNLOAD_ID = "fenix_privacy_download_id"
 private const val KEY_QUEUED_VERSION = "fenix_privacy_queued_version"
 private const val KEY_EXPECTED_SHA256 = "fenix_privacy_expected_sha256"
 private const val KEY_QUEUED_VERSION_NAME = "fenix_privacy_queued_version_name"
+private const val KEY_LAST_CHECK_AT = "fenix_privacy_last_check_at"
+private const val KEY_LAST_UPDATE_STATUS = "fenix_privacy_last_update_status"
+private const val KEY_AVAILABLE_VERSION = "fenix_privacy_available_version"
+private const val KEY_LAST_UPDATE_ERROR = "fenix_privacy_last_update_error"
+private const val KEY_RELEASE_NOTES_URL = "fenix_privacy_release_notes_url"
+private const val KEY_FEED_UPSTREAM_REF = "fenix_privacy_feed_upstream_ref"
+private const val STATUS_NEVER = "never"
+private const val STATUS_CHECKING = "checking"
+private const val STATUS_CURRENT = "current"
+private const val STATUS_QUEUED = "queued"
+private const val STATUS_DOWNLOADING = "downloading"
+private const val STATUS_READY = "ready"
+private const val STATUS_ERROR = "error"
