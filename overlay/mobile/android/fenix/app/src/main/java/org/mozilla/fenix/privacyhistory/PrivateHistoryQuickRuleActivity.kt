@@ -21,13 +21,14 @@ class PrivateHistoryQuickRuleActivity : Activity() {
             Intent.ACTION_PROCESS_TEXT -> intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
             else -> intent?.dataString
         }.orEmpty().trim()
-        val uri = runCatching { URI(shared) }.getOrNull()
-        val host = uri?.host.orEmpty()
-        if (host.isBlank() || uri?.scheme?.lowercase() !in setOf("http", "https")) {
+        val parsedUri = runCatching { URI(shared) }.getOrNull()
+        val host = parsedUri?.host.orEmpty()
+        if (parsedUri == null || host.isBlank() || parsedUri.scheme?.lowercase() !in setOf("http", "https")) {
             Toast.makeText(this, R.string.private_history_quick_invalid_url, Toast.LENGTH_LONG).show()
             finish()
             return
         }
+        val uri: URI = parsedUri
 
         val labels = resources.getStringArray(R.array.private_history_quick_actions)
         AlertDialog.Builder(this)
