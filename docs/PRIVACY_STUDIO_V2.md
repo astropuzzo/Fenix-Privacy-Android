@@ -38,9 +38,9 @@ Allow rules have priority over ordinary visual and legacy rules. Global temporar
 Domain matchers accept a bare registrable domain such as `sitoacaso.it`; a scheme, `www`, wildcard,
 or trailing slash is not required. When **close site tabs** is explicitly enabled on a
 `DOMAIN_EXCEPT_ROOT` rule, matching pages stay open and fully usable for the current session while
-being excluded from Places history. Restored tabs for that domain are removed only at the next app
-start. The periodic history scrub never closes a live tab. An exact allow rule can keep a
-particular restored tab open.
+being excluded from Places history. Only matching restored tabs are removed at the next app start;
+the allowed homepage remains open. The periodic history scrub never closes a live tab. An exact
+allow rule can keep a particular restored tab open.
 
 ## Privacy invariants
 

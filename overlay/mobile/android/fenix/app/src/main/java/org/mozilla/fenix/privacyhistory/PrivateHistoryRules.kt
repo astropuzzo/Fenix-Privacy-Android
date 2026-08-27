@@ -75,10 +75,9 @@ class PrivateHistoryRules(
      * Returns whether an open tab belongs to an explicitly enabled close-tab rule.
      *
      * Tab restoration is independent from Places history, so this deliberately evaluates the
-     * visual rule itself instead of relying on a history callback. For DOMAIN_EXCEPT_ROOT the
-     * close-tab scope is the whole domain: the clean homepage may remain in history while its
-     * restored tab is still closed. An exact ALLOW rule keeps its normal precedence and can opt
-     * into tab closing explicitly.
+     * visual rule itself instead of relying on a history callback. Only URLs that match the rule
+     * are removed from restored state, so a clean homepage remains open for DOMAIN_EXCEPT_ROOT.
+     * An exact ALLOW rule keeps its normal precedence and can opt into tab removal explicitly.
      */
     fun shouldCloseTab(uri: String, title: String? = null, searchTerm: String? = null): Boolean {
         if (!enabled || uri.isBlank()) return false
@@ -87,9 +86,7 @@ class PrivateHistoryRules(
             it.action == PrivateHistoryRule.Action.ALLOW && matchesRule(it, uri, title, searchTerm)
         }?.let { return it.closeTab }
 
-        return rules.any { rule ->
-            rule.closeTab && matchesTabScope(rule, uri, title, searchTerm)
-        }
+        return rules.any { rule -> rule.closeTab && matchesRule(rule, uri, title, searchTerm) }
     }
 
     fun blockedDomains(): Set<String> = parseLines(prefs.getString(KEY_DOMAINS, "").orEmpty())
@@ -199,20 +196,6 @@ class PrivateHistoryRules(
             }
             PrivateHistoryRule.Matcher.EXACT_URL -> exactUrlKey(uri) == exactUrlKey(rule.value)
         }
-    }
-
-    private fun matchesTabScope(
-        rule: PrivateHistoryRule,
-        uri: String,
-        title: String?,
-        searchTerm: String?,
-    ): Boolean {
-        if (rule.matcher != PrivateHistoryRule.Matcher.DOMAIN_EXCEPT_ROOT) {
-            return matchesRule(rule, uri, title, searchTerm)
-        }
-        val host = extractHost(uri) ?: return false
-        val domain = normalizeDomain(rule.value) ?: return false
-        return domainMatches(host, domain)
     }
 
     private fun pathPrefixMatches(host: String?, path: String, rawRule: String): Boolean {

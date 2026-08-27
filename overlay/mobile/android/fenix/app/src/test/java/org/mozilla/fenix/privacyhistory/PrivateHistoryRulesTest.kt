@@ -155,7 +155,7 @@ class PrivateHistoryRulesTest {
     }
 
     @Test
-    fun `domain-only close rule closes restored site tabs but keeps the homepage in history`() {
+    fun `domain-only close rule removes matching restored tabs but leaves the homepage open`() {
         putVisualRules(
             PrivateHistoryRule(
                 name = "Keep root and close tabs",
@@ -168,7 +168,7 @@ class PrivateHistoryRulesTest {
         val rules = PrivateHistoryRules(testContext)
 
         assertFalse(rules.shouldBlockUri("http://www.sitoacaso.it/"))
-        assertTrue(rules.shouldCloseTab("http://www.sitoacaso.it/"))
+        assertFalse(rules.shouldCloseTab("http://www.sitoacaso.it/"))
         assertTrue(rules.shouldCloseTab("https://deep.sitoacaso.it/threads/private"))
         assertFalse(rules.shouldCloseTab("https://not-sitoacaso.it/threads/private"))
     }
