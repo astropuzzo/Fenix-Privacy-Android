@@ -13,6 +13,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import java.util.concurrent.TimeUnit
 import org.mozilla.fenix.FenixApplication
 
@@ -29,7 +30,9 @@ class PrivateHistoryMaintenanceWorker(
                 PrivateHistoryRules(applicationContext),
                 app.components.core.privateHistoryStats,
             ).purgeMatchingHistory()
-            app.components.core.privateHistoryActionExecutor.closeRestoredTabs()
+            if (inputData.getBoolean(KEY_CLOSE_RESTORED_TABS, false)) {
+                app.components.core.privateHistoryActionExecutor.closeRestoredTabs()
+            }
             val selfTest = PrivateHistorySelfTest.run(applicationContext)
             PreferenceManager.getDefaultSharedPreferences(applicationContext).edit()
                 .putLong(KEY_SELF_TEST_AT, System.currentTimeMillis())
@@ -50,13 +53,16 @@ class PrivateHistoryMaintenanceWorker(
         const val KEY_SELF_TEST_PASSED = "fenix_privacy_self_test_passed"
         const val KEY_SELF_TEST_TOTAL = "fenix_privacy_self_test_total"
         const val KEY_SELF_TEST_OK = "fenix_privacy_self_test_ok"
+        internal const val KEY_CLOSE_RESTORED_TABS = "fenix_privacy_close_restored_tabs"
 
         fun schedule(context: Context) {
             val manager = WorkManager.getInstance(context)
             manager.enqueueUniqueWork(
                 STARTUP_NAME,
                 ExistingWorkPolicy.KEEP,
-                OneTimeWorkRequestBuilder<PrivateHistoryMaintenanceWorker>().build(),
+                OneTimeWorkRequestBuilder<PrivateHistoryMaintenanceWorker>()
+                    .setInputData(workDataOf(KEY_CLOSE_RESTORED_TABS to true))
+                    .build(),
             )
             manager.enqueueUniquePeriodicWork(
                 PERIODIC_NAME,

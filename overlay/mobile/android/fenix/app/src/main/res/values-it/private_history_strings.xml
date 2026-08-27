@@ -96,7 +96,7 @@
     <string name="private_history_builder_clear_cookies">Cancella anche cookie, accesso e memoria di questo sito</string>
     <string name="private_history_builder_clear_cache">Cancella anche la cache di questo sito</string>
     <string name="private_history_builder_clear_downloads">Svuota anche l’elenco download (i file restano sul dispositivo)</string>
-    <string name="private_history_builder_close_tab">Chiudi le schede del sito subito e dopo il riavvio (la cronologia segue l’azione scelta)</string>
+    <string name="private_history_builder_close_tab">Non ripristinare le schede del sito al prossimo avvio</string>
     <string name="private_history_builder_save">Salva regola</string>
     <string name="private_history_builder_value_required">Inserisci un valore da controllare</string>
 
