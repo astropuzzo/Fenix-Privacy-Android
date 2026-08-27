@@ -97,7 +97,7 @@
     <string name="private_history_builder_clear_cookies">Also clear this site’s cookies, login and storage</string>
     <string name="private_history_builder_clear_cache">Also clear this site’s cache</string>
     <string name="private_history_builder_clear_downloads">Also clear the download list (files stay on disk)</string>
-    <string name="private_history_builder_close_tab">Close site tabs immediately and after restart (history follows the selected action)</string>
+    <string name="private_history_builder_close_tab">Do not restore tabs matching this rule at the next app start</string>
     <string name="private_history_builder_save">Save rule</string>
     <string name="private_history_builder_value_required">Enter a value to match</string>
 

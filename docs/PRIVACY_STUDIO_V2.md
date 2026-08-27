@@ -17,7 +17,7 @@ Privacy Studio adds a rule engine on top of the original domain, keyword, and re
 | 9 | Rule profiles | Active profiles stored as names; new profiles activate automatically | Profile editor and per-rule profile |
 | 10 | Settings lock | Device biometric/PIN prompt | Firefox-controlled extension access; no biometric data is available to WebExtensions |
 | 11 | Encrypted transfer/sync | AES-256-GCM `.fprules` import/export | Compatible file import/export plus encrypted `storage.sync` push/pull |
-| 12 | Per-rule actions | Block, allow, collapse; optional cookies/site storage, cache, download-list, and live/restored-tab actions | Same with optional Firefox permissions |
+| 12 | Per-rule actions | Block, allow, collapse; optional cookies/site storage, cache, download-list, and restored-tab actions | Same with optional Firefox permissions |
 | 13 | Cleanup preview | Aggregate matching and collapse counts before confirmation | Same; no matching URL list is shown or retained |
 | 14 | Integrity self-test | Runs at startup/maintenance and on demand | Runs at extension initialization and on demand |
 | 15 | Update center | Installed/Mozilla/feed version, runtime certificate verification, status, last check and release notes | Installed add-on version, signed update feed and integrity state |
@@ -37,8 +37,10 @@ Allow rules have priority over ordinary visual and legacy rules. Global temporar
 
 Domain matchers accept a bare registrable domain such as `sitoacaso.it`; a scheme, `www`, wildcard,
 or trailing slash is not required. When **close site tabs** is explicitly enabled on a
-`DOMAIN_EXCEPT_ROOT` rule, the homepage can remain in Places history while every restored tab for
-that domain is closed at the next app start. An exact allow rule can keep a particular tab open.
+`DOMAIN_EXCEPT_ROOT` rule, matching pages stay open and fully usable for the current session while
+being excluded from Places history. Only matching restored tabs are removed at the next app start;
+the allowed homepage remains open. The periodic history scrub never closes a live tab. An exact
+allow rule can keep a particular restored tab open.
 
 ## Privacy invariants
 

@@ -28,6 +28,9 @@ class PrivateHistoryActionExecutor(
 
     fun execute(uri: String, rule: PrivateHistoryRule?) {
         if (rule == null || !rule.isDestructive || uri.isBlank()) return
+        // Tab removal is intentionally excluded here. A matching page must remain usable for the
+        // current Firefox session; closeTab only prevents restored tabs from surviving restart.
+        if (!rule.clearCookies && !rule.clearCache && !rule.clearDownloads) return
         val key = "${rule.id}:${uri.hashCode()}"
         if (!pending.add(key)) return
 
@@ -55,21 +58,18 @@ class PrivateHistoryActionExecutor(
                     // as a whole. Files on disk remain untouched.
                     useCases.value.downloadUseCases.removeAllDownloads.invoke()
                 }
-                if (rule.closeTab) {
-                    closeMatchingTabs()
-                }
             } finally {
                 pending.remove(key)
             }
         }
     }
 
-    /** Closes tabs restored from Firefox session state even when no new history event fires. */
+    /** Removes matching tabs from restored session state without interrupting live navigation. */
     suspend fun closeRestoredTabs(): Int = withContext(Dispatchers.Main) {
-        closeMatchingTabs()
+        closeRestoredMatchingTabs()
     }
 
-    private suspend fun closeMatchingTabs(): Int {
+    private suspend fun closeRestoredMatchingTabs(): Int {
         repeat(CLOSE_TAB_ATTEMPTS) { attempt ->
             val ids = store.value.state.tabs
                 .filter { tab ->
