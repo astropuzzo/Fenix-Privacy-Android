@@ -169,6 +169,8 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("val clearDownloads: Boolean = false", rule_source)
         self.assertIn("val closeTab: Boolean = false", rule_source)
         self.assertIn("if (rule == null || !rule.isDestructive", source)
+        self.assertIn("closeRestoredTabs()", source)
+        self.assertIn("rules.shouldCloseTab", source)
         self.assertIn("Cookies and logins stay saved", (ROOT / "README.md").read_text(encoding="utf-8"))
 
     def test_public_android_release_confirmation_uses_release_date(self):

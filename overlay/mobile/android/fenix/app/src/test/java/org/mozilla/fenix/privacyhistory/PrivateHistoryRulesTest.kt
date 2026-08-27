@@ -155,6 +155,48 @@ class PrivateHistoryRulesTest {
     }
 
     @Test
+    fun `domain-only close rule closes restored site tabs but keeps the homepage in history`() {
+        putVisualRules(
+            PrivateHistoryRule(
+                name = "Keep root and close tabs",
+                matcher = PrivateHistoryRule.Matcher.DOMAIN_EXCEPT_ROOT,
+                value = "sitoacaso.it",
+                action = PrivateHistoryRule.Action.BLOCK,
+                closeTab = true,
+            ),
+        )
+        val rules = PrivateHistoryRules(testContext)
+
+        assertFalse(rules.shouldBlockUri("http://www.sitoacaso.it/"))
+        assertTrue(rules.shouldCloseTab("http://www.sitoacaso.it/"))
+        assertTrue(rules.shouldCloseTab("https://deep.sitoacaso.it/threads/private"))
+        assertFalse(rules.shouldCloseTab("https://not-sitoacaso.it/threads/private"))
+    }
+
+    @Test
+    fun `exact allow rule can keep a homepage tab open`() {
+        putVisualRules(
+            PrivateHistoryRule(
+                name = "Close site tabs",
+                matcher = PrivateHistoryRule.Matcher.DOMAIN_EXCEPT_ROOT,
+                value = "sitoacaso.it",
+                action = PrivateHistoryRule.Action.BLOCK,
+                closeTab = true,
+            ),
+            PrivateHistoryRule(
+                name = "Keep homepage tab",
+                matcher = PrivateHistoryRule.Matcher.EXACT_URL,
+                value = "https://www.sitoacaso.it/",
+                action = PrivateHistoryRule.Action.ALLOW,
+            ),
+        )
+        val rules = PrivateHistoryRules(testContext)
+
+        assertFalse(rules.shouldCloseTab("https://www.sitoacaso.it/"))
+        assertTrue(rules.shouldCloseTab("https://www.sitoacaso.it/threads/private"))
+    }
+
+    @Test
     fun `collapse rule returns canonical site root`() {
         putVisualRules(
             PrivateHistoryRule(
