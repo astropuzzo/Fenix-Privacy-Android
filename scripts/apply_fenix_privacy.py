@@ -67,6 +67,7 @@ def patch_core(target: Path) -> None:
         "            lazy { engine },\n"
         "            lazy { store },\n"
         "            lazy { context.components.useCases },\n"
+        "            privateHistoryRules,\n"
         "        )\n"
         "    }\n\n"
         "    /**\n     * The browser engine component"

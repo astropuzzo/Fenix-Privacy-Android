@@ -29,6 +29,7 @@ class PrivateHistoryMaintenanceWorker(
                 PrivateHistoryRules(applicationContext),
                 app.components.core.privateHistoryStats,
             ).purgeMatchingHistory()
+            app.components.core.privateHistoryActionExecutor.closeRestoredTabs()
             val selfTest = PrivateHistorySelfTest.run(applicationContext)
             PreferenceManager.getDefaultSharedPreferences(applicationContext).edit()
                 .putLong(KEY_SELF_TEST_AT, System.currentTimeMillis())

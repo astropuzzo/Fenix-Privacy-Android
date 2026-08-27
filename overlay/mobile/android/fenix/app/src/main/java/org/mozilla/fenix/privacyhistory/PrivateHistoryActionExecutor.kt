@@ -9,7 +9,9 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.Engine
 import org.mozilla.fenix.components.UseCases
@@ -19,6 +21,7 @@ class PrivateHistoryActionExecutor(
     private val engine: Lazy<Engine>,
     private val store: Lazy<BrowserStore>,
     private val useCases: Lazy<UseCases>,
+    private val rules: PrivateHistoryRules,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
 ) {
     private val pending = ConcurrentHashMap.newKeySet<String>()
@@ -53,14 +56,42 @@ class PrivateHistoryActionExecutor(
                     useCases.value.downloadUseCases.removeAllDownloads.invoke()
                 }
                 if (rule.closeTab) {
-                    store.value.state.tabs
-                        .filter { it.content.url == uri }
-                        .map { it.id }
-                        .forEach { useCases.value.tabsUseCases.removeTab.invoke(it) }
+                    closeMatchingTabs()
                 }
             } finally {
                 pending.remove(key)
             }
         }
+    }
+
+    /** Closes tabs restored from Firefox session state even when no new history event fires. */
+    suspend fun closeRestoredTabs(): Int = withContext(Dispatchers.Main) {
+        closeMatchingTabs()
+    }
+
+    private suspend fun closeMatchingTabs(): Int {
+        repeat(CLOSE_TAB_ATTEMPTS) { attempt ->
+            val ids = store.value.state.tabs
+                .filter { tab ->
+                    rules.shouldCloseTab(
+                        uri = tab.content.url,
+                        title = tab.content.title,
+                        searchTerm = tab.content.searchTerms,
+                    )
+                }
+                .map { it.id }
+                .distinct()
+            if (ids.isNotEmpty()) {
+                ids.forEach { useCases.value.tabsUseCases.removeTab.invoke(it) }
+                return ids.size
+            }
+            if (attempt + 1 < CLOSE_TAB_ATTEMPTS) delay(CLOSE_TAB_RETRY_MILLIS)
+        }
+        return 0
+    }
+
+    private companion object {
+        const val CLOSE_TAB_ATTEMPTS = 8
+        const val CLOSE_TAB_RETRY_MILLIS = 250L
     }
 }
