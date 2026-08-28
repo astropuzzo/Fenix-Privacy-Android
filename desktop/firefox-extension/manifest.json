@@ -1,8 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Fenix Privacy Desktop",
-  "version": "2.0.0",
-  "description": "Privacy Studio for selective Firefox history: visual rules, profiles, exceptions, collapsing and encrypted sync.",
+  "version": "3.0.0",
+  "description": "Contextual selective-history controls, delayed forgetting, tab shields and encrypted cross-device rules.",
+  "icons": {
+    "48": "icons/shield-idle.svg",
+    "96": "icons/shield-idle.svg"
+  },
   "permissions": [
     "alarms",
     "contextMenus",
@@ -26,7 +30,14 @@
   },
   "action": {
     "default_title": "Fenix Privacy",
+    "default_icon": "icons/shield-idle.svg",
     "default_popup": "popup.html"
+  },
+  "page_action": {
+    "default_title": "Fenix Privacy",
+    "default_icon": "icons/shield-idle.svg",
+    "default_popup": "popup.html",
+    "show_matches": ["http://*/*", "https://*/*"]
   },
   "options_ui": {
     "page": "options.html",

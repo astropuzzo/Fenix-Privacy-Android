@@ -10,7 +10,7 @@ The goal is simple: keep normal Firefox history for everything except domains, w
 
 ## Production downloads
 
-The rolling [Production Downloads release](https://github.com/astropuzzo/Fenix-Privacy-Android/releases/tag/production-downloads) is refreshed only after successful signed builds:
+The rolling [Production Downloads release](https://github.com/astropuzzo/Fenix-Privacy-Android/releases/tag/production-downloads) is refreshed only after successful production builds:
 
 - [Android ARM64 APK](https://github.com/astropuzzo/Fenix-Privacy-Android/releases/download/production-downloads/Fenix-Privacy-Android.apk)
 - [Windows installer EXE](https://github.com/astropuzzo/Fenix-Privacy-Android/releases/download/production-downloads/Fenix-Privacy-Desktop-Installer.exe)
@@ -18,13 +18,16 @@ The rolling [Production Downloads release](https://github.com/astropuzzo/Fenix-P
 - [SHA-256 checksums](https://github.com/astropuzzo/Fenix-Privacy-Android/releases/download/production-downloads/SHA256SUMS.txt)
 
 There is no separate macOS/Linux package: Firefox uses the same Mozilla-signed XPI on all three desktop systems.
+The release index reports Android, Mozilla XPI and Windows Authenticode signature state separately; an EXE is never described as Authenticode-signed unless CI verified it.
 
 ## Features
 
-- **Privacy Studio 2.0:** visual rule builder with allowlist exceptions, profiles, expirations, path/query/title matchers and exact URL rules.
+- **Privacy Studio 3.0:** visual rule builder with allowlist exceptions, profiles, expirations, path/query/title matchers and exact URL rules.
+- **Contextual shield button:** the Android address bar and Firefox Desktop URL bar expose current-page status and one-tap rule actions; no command syntax is required.
 - **Homepage-only rules:** block everything except a clean site root, or collapse internal visits so history records only the homepage.
-- **Quick rules:** create a rule from Android's share sheet or Firefox Desktop's page context menu.
-- **Temporary shields:** block all history for 15 minutes, one hour or the current app session; Desktop also supports one tab until it closes.
+- **Quick rules:** create a rule from Android's share sheet, the address-bar shield, Firefox Desktop's URL-bar shield or the page context menu.
+- **Temporary shields:** block all history for 15 minutes, one hour or the current app session; shield one tab and its children, or arm only the next navigation.
+- **Delayed forgetting:** keep matching history until the next Firefox start or for a chosen retention period without closing or disrupting the live page.
 - **Private tester and cleanup preview:** decisions and aggregate counts are shown without storing or listing tested/matching URLs.
 - Domain blacklist: exact domains and all subdomains.
 - Keyword/phrase blacklist: URL, decoded search query and page-title matching.
@@ -36,7 +39,7 @@ There is no separate macOS/Linux package: Firefox uses the same Mozilla-signed X
 - Device-local privacy counter: aggregate totals for pre-write blocks, title/search scrubs and startup/Sync cleanup. URLs, titles, queries and rules are never stored in the counter.
 - Dashboard: aggregate today/week/total/collapse counters, milestones, live shield state and an optional Android Quick Settings tile.
 - **Cookies and logins stay saved by default.** Site data, sessions, cache, downloads and tabs are untouched unless an optional action is explicitly enabled on one visual rule.
-- AES-256-GCM `.fprules` bundles move rules between Android and Desktop without including history or counters; Desktop can push/pull the encrypted bundle through Firefox Sync.
+- AES-256-GCM `.fprules` bundles and local encrypted QR transfer move rules between Android and Desktop without including history, counters or the passphrase; Desktop can also push/pull the encrypted bundle through Firefox Sync.
 - Device biometric/PIN protection for the Android rule screen.
 - Automatic and on-demand privacy integrity self-tests after Mozilla updates.
 - Separate Android package: `io.github.astropuzzo.fenixprivacy`, so official Firefox can stay installed.
@@ -45,21 +48,21 @@ There is no separate macOS/Linux package: Firefox uses the same Mozilla-signed X
 - Built-in updater: checks GitHub releases, automatically downloads a newer APK, verifies SHA-256, then hands it to Android for the required installation confirmation.
 - Stable-upstream CI: tracks Firefox stable release tags, not Nightly commits.
 
-See [Privacy Studio 2.0](docs/PRIVACY_STUDIO_V2.md) for all 15 features, matcher semantics and privacy guarantees.
+See [Privacy Studio 3.0](docs/PRIVACY_STUDIO_V3.md) for feature parity, matcher semantics and privacy guarantees.
 
 ## Firefox Desktop (Windows, macOS and Linux)
 
 This repository also contains **Fenix Privacy Desktop**, a Firefox WebExtension under [`desktop/firefox-extension`](desktop/firefox-extension). It mirrors the selective-history behavior on Firefox for Windows, macOS and Linux:
 
 - domain/subdomain, keyword/phrase and regular-expression rules;
-- visual allow/block/collapse rules, profiles, temporary per-tab mode and quick page actions;
-- encrypted Android-compatible import/export and encrypted Firefox Sync transport;
-- toolbar shield badge, aggregate dashboard, cleanup preview and integrity self-test;
+- visual allow/block/collapse/delayed-forgetting rules, profiles, inherited per-tab mode and one-shot navigation protection;
+- encrypted Android-compatible file/QR import/export and encrypted Firefox Sync transport;
+- URL-bar shield button and popup, aggregate dashboard, cleanup preview, conflict warnings and integrity self-test;
 - immediate deletion on history/navigation events plus title-based cleanup after page load;
 - full-history scrub on demand, at startup and every 15+ minutes;
 - rules local by default, with opt-in Firefox `storage.sync` after Firefox's built-in consent;
 - no browsing data transmitted to a developer-controlled server;
-- GitHub Actions builds an unsigned test XPI for pull requests, while every main-branch desktop release requires an **unlisted Mozilla-signed XPI** using `AMO_API_KEY` / `AMO_API_SECRET`. Unsigned release publication is blocked. Signed desktop releases publish `desktop-updates.json`, and the rolling production release exposes the signed XPI plus the Windows installer in one stable location. Firefox self-update works once this repository is public.
+- GitHub Actions builds an unsigned test XPI for pull requests, while every main-branch desktop release requires an **unlisted Mozilla-signed XPI** using `AMO_API_KEY` / `AMO_API_SECRET`. Unsigned XPI publication is blocked. If `WINDOWS_SIGNING_PFX_BASE64` and `WINDOWS_SIGNING_PFX_PASSWORD` are configured, CI also Authenticode-signs and verifies the installer; otherwise the release metadata states plainly that the EXE is unsigned. Signed desktop releases publish `desktop-updates.json`, and the rolling production release exposes the XPI plus the Windows installer in one stable location.
 
 Firefox Desktop requires Mozilla signing for normal permanent installation. See [`desktop/firefox-extension/README.md`](desktop/firefox-extension/README.md) and [`desktop/windows`](desktop/windows).
 
@@ -71,7 +74,7 @@ If Mozilla changes an integration point and the patch no longer applies exactly,
 
 The Android check runs every day at **04:23 UTC** and can also be started manually. A new Mozilla stable tag is recorded in `UPSTREAM_REF` only after the ARM64 APK, signing certificate, package identity, Gecko libraries, update manifest and GitHub Release have all passed.
 
-Desktop is a Mozilla-signed WebExtension rather than a forked Firefox binary, so it is rebuilt when the extension changes, not for every Firefox source tag. The same signed XPI works on Windows, macOS and Linux; the rolling production release always keeps it beside the newest Android build.
+Desktop is a Mozilla-signed WebExtension rather than a forked Firefox binary, so it is rebuilt when the extension changes, not for every Firefox source tag. The Windows EXE is an installer for that same XPI: all Privacy Studio 3.0 behavior is therefore included in the EXE path too. The same signed XPI works on Windows, macOS and Linux; the rolling production release always keeps it beside the newest Android build.
 
 ## Initial repository setup
 

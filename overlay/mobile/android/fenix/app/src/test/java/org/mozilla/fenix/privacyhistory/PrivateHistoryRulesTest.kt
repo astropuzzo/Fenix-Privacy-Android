@@ -264,6 +264,44 @@ class PrivateHistoryRulesTest {
         assertFalse(rules.shouldBlockUri("https://mozilla.org/"))
     }
 
+    @Test
+    fun `delayed actions keep the live visit and preserve their retention in the codec`() {
+        val original = PrivateHistoryRule(
+            name = "Keep for a day",
+            matcher = PrivateHistoryRule.Matcher.DOMAIN,
+            value = "example.com",
+            action = PrivateHistoryRule.Action.FORGET_AFTER,
+            retentionMillis = 86_400_000L,
+        )
+        putVisualRules(original)
+        val rules = PrivateHistoryRules(testContext) { 200_000_000L }
+        val decision = rules.decide("https://example.com/current")
+
+        assertFalse(decision.suppressesOriginal)
+        assertTrue(decision.isDelayed)
+        assertEquals(86_400_000L, rules.visualRules().single().retentionMillis)
+        assertFalse(rules.shouldRemoveStoredVisit(decision, 150_000_000L, includeRestartRules = false))
+        assertTrue(rules.shouldRemoveStoredVisit(decision, 100_000_000L, includeRestartRules = false))
+    }
+
+    @Test
+    fun `restart action is eligible only for startup or explicit cleanup`() {
+        putVisualRules(
+            PrivateHistoryRule(
+                name = "Forget on restart",
+                matcher = PrivateHistoryRule.Matcher.DOMAIN,
+                value = "example.com",
+                action = PrivateHistoryRule.Action.FORGET_ON_RESTART,
+            ),
+        )
+        val rules = PrivateHistoryRules(testContext)
+        val decision = rules.decide("https://example.com/current")
+
+        assertFalse(decision.suppressesOriginal)
+        assertFalse(rules.shouldRemoveStoredVisit(decision, 1L, includeRestartRules = false))
+        assertTrue(rules.shouldRemoveStoredVisit(decision, 1L, includeRestartRules = true))
+    }
+
     private fun putString(key: String, value: String) {
         prefs.edit().putString(key, value).commit()
     }

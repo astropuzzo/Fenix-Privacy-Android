@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "description": "Synthetic cross-platform matcher fixtures. No browsing data is included.",
+  "cases": [
+    {
+      "name": "domain blocks subdomains",
+      "rules": [
+        {
+          "id": "domain-block",
+          "name": "Block example",
+          "profile": "Default",
+          "matcher": "DOMAIN",
+          "value": "example.test",
+          "action": "BLOCK",
+          "enabled": true
+        }
+      ],
+      "url": "https://deep.example.test/private",
+      "title": "Synthetic page",
+      "expectedAction": "BLOCK"
+    },
+    {
+      "name": "domain except root keeps homepage",
+      "rules": [
+        {
+          "id": "keep-root",
+          "name": "Keep homepage",
+          "profile": "Default",
+          "matcher": "DOMAIN_EXCEPT_ROOT",
+          "value": "example.test",
+          "action": "BLOCK",
+          "enabled": true
+        }
+      ],
+      "url": "https://www.example.test/",
+      "title": "Synthetic homepage",
+      "expectedAction": "ALLOW"
+    },
+    {
+      "name": "collapse returns canonical root",
+      "rules": [
+        {
+          "id": "collapse-root",
+          "name": "Collapse example",
+          "profile": "Default",
+          "matcher": "DOMAIN_EXCEPT_ROOT",
+          "value": "example.test",
+          "action": "COLLAPSE_TO_ROOT",
+          "enabled": true
+        }
+      ],
+      "url": "https://sub.example.test/section/item?q=synthetic",
+      "title": "Synthetic item",
+      "expectedAction": "COLLAPSE_TO_ROOT",
+      "expectedCollapsedUrl": "https://sub.example.test/"
+    },
+    {
+      "name": "exact allow wins",
+      "rules": [
+        {
+          "id": "block-site",
+          "name": "Block example",
+          "profile": "Default",
+          "matcher": "DOMAIN",
+          "value": "example.test",
+          "action": "BLOCK",
+          "enabled": true
+        },
+        {
+          "id": "allow-page",
+          "name": "Allow exact page",
+          "profile": "Default",
+          "matcher": "EXACT_URL",
+          "value": "https://example.test/allowed",
+          "action": "ALLOW",
+          "enabled": true
+        }
+      ],
+      "url": "https://example.test/allowed",
+      "title": "Synthetic allowed page",
+      "expectedAction": "ALLOW"
+    },
+    {
+      "name": "query parameter is decoded",
+      "rules": [
+        {
+          "id": "query-match",
+          "name": "Private synthetic query",
+          "profile": "Default",
+          "matcher": "QUERY_PARAMETER",
+          "value": "two words",
+          "queryParameter": "q",
+          "action": "BLOCK",
+          "enabled": true
+        }
+      ],
+      "url": "https://search.example.test/?q=two%20words",
+      "title": "Synthetic results",
+      "expectedAction": "BLOCK"
+    },
+    {
+      "name": "forget after is delayed",
+      "rules": [
+        {
+          "id": "forget-after",
+          "name": "Keep one hour",
+          "profile": "Default",
+          "matcher": "DOMAIN",
+          "value": "temporary.example.test",
+          "action": "FORGET_AFTER",
+          "enabled": true,
+          "retentionMillis": 3600000
+        }
+      ],
+      "url": "https://temporary.example.test/current",
+      "title": "Synthetic temporary page",
+      "expectedAction": "FORGET_AFTER"
+    },
+    {
+      "name": "forget on restart is delayed",
+      "rules": [
+        {
+          "id": "forget-restart",
+          "name": "Keep until restart",
+          "profile": "Default",
+          "matcher": "DOMAIN",
+          "value": "restart.example.test",
+          "action": "FORGET_ON_RESTART",
+          "enabled": true
+        }
+      ],
+      "url": "https://restart.example.test/current",
+      "title": "Synthetic restart page",
+      "expectedAction": "FORGET_ON_RESTART"
+    }
+  ]
+}

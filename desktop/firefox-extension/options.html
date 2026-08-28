@@ -10,7 +10,7 @@
   <main>
     <div class="hero">
       <div><h1>Fenix Privacy Studio</h1><p>Keep useful history. Hide only what you choose. Cookies and sessions stay saved by default.</p></div>
-      <span class="badge">Desktop 2.0</span>
+      <span class="badge">Desktop 3.0</span>
     </div>
 
     <section class="card dashboard-grid">
@@ -52,8 +52,11 @@
             <option value="ALLOW">Always allow and save</option>
             <option value="BLOCK" selected>Never save</option>
             <option value="COLLAPSE_TO_ROOT">Save only the homepage</option>
+            <option value="FORGET_ON_RESTART">Save now, forget at next Firefox start</option>
+            <option value="FORGET_AFTER">Save temporarily, then forget</option>
           </select>
         </label>
+        <label id="retentionRow" hidden>Forget after hours<input id="ruleRetentionHours" type="number" min="0.0167" max="8760" step="0.25" value="24"></label>
         <label>Expires after minutes<input id="ruleExpiry" type="number" min="1" placeholder="Blank = never"></label>
       </div>
       <details class="danger-options"><summary>Optional destructive actions</summary>
@@ -62,11 +65,12 @@
           <label class="switch-row"><span>Clear site cookies, login and storage</span><input id="ruleClearCookies" type="checkbox"></label>
           <label class="switch-row"><span>Clear browser cache</span><input id="ruleClearCache" type="checkbox"></label>
           <label class="switch-row"><span>Erase matching entries from download list</span><input id="ruleClearDownloads" type="checkbox"></label>
-          <label class="switch-row"><span>Close matching tab</span><input id="ruleCloseTab" type="checkbox"></label>
+          <label class="switch-row"><span>Remove matching restored tab at next Firefox start</span><input id="ruleCloseTab" type="checkbox"></label>
         </div>
       </details>
       <div class="actions"><button id="addRule" class="primary">Add rule</button><button id="cancelEdit" hidden>Cancel edit</button></div>
       <div id="visualRuleList" class="rule-list"></div>
+      <div id="ruleWarnings" class="rule-warnings" aria-live="polite"></div>
     </section>
 
     <section class="card grid2">
@@ -112,11 +116,20 @@
       </div>
       <div class="actions wrap">
         <button id="exportEncrypted">Export encrypted file</button>
+        <button id="showQr">Show encrypted QR</button>
         <label class="file-button">Import encrypted file<input id="importEncrypted" type="file" accept="application/octet-stream,text/plain,.fprules"></label>
         <button id="pushEncryptedSync">Push encrypted rules</button>
         <button id="pullEncryptedSync">Pull encrypted rules</button>
       </div>
     </section>
+
+    <dialog id="qrDialog" class="qr-dialog">
+      <form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form>
+      <h2>Encrypted rule QR</h2>
+      <p>Scan locally from Fenix Privacy Android. The QR contains only the encrypted bundle.</p>
+      <img id="qrImage" alt="Encrypted Fenix Privacy rules QR code">
+      <p id="qrStatus" class="status"></p>
+    </dialog>
 
     <section class="card grid2">
       <div><h2>Integrity self-test</h2><p>Checks matcher precedence, homepage collapse, counters and safe cookie defaults.</p><div class="actions"><button id="selfTest">Run self-test</button><strong id="selfTestResult"></strong></div></div>
@@ -128,6 +141,7 @@
       <p id="status" class="status"></p>
     </section>
   </main>
+  <script src="vendor/qrcode.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

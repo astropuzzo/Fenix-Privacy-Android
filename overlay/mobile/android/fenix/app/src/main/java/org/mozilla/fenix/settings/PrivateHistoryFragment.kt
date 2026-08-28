@@ -5,11 +5,13 @@
 package org.mozilla.fenix.settings
 
 import android.app.AlertDialog
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,7 +26,9 @@ import java.util.Date
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import mozilla.components.feature.qr.QrScanActivity
 import org.mozilla.fenix.R
+import org.mozilla.fenix.components.menu.share.QRCodeGenerator
 import org.mozilla.fenix.e2e.SystemInsetsPaddedFragment
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.showToolbar
@@ -87,6 +91,19 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
         }
     }
 
+    private val qrImportLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val bundle = result.data
+            ?.takeIf { result.resultCode == Activity.RESULT_OK }
+            ?.getStringExtra(QrScanActivity.EXTRA_SCAN_RESULT_DATA)
+            ?.takeIf(String::isNotBlank)
+            ?: return@registerForActivityResult
+        showPassphraseDialog(R.string.private_history_backup_import_title) { passphrase ->
+            importEncryptedBundle(bundle, passphrase)
+        }
+    }
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.private_history_preferences, rootKey)
         configureRuleEditor(PrivateHistoryRules.KEY_DOMAINS, R.string.private_history_none_domains)
@@ -119,6 +136,14 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
         }
         findPreference<Preference>(KEY_BACKUP_IMPORT)?.setOnPreferenceClickListener {
             importLauncher.launch(arrayOf("application/octet-stream", "text/plain", "application/json"))
+            true
+        }
+        findPreference<Preference>(KEY_BACKUP_QR_EXPORT)?.setOnPreferenceClickListener {
+            showPassphraseDialog(R.string.private_history_backup_export_title, ::showEncryptedQr)
+            true
+        }
+        findPreference<Preference>(KEY_BACKUP_QR_IMPORT)?.setOnPreferenceClickListener {
+            qrImportLauncher.launch(QrScanActivity.newIntent(requireContext()))
             true
         }
         findPreference<Preference>(KEY_SELF_TEST)?.setOnPreferenceClickListener {
@@ -285,6 +310,10 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
                         R.string.private_history_tester_collapsed,
                         decision.collapsedUri.orEmpty(),
                     )
+                    PrivateHistoryRule.Action.FORGET_AFTER ->
+                        getString(R.string.private_history_tester_temporary)
+                    PrivateHistoryRule.Action.FORGET_ON_RESTART ->
+                        getString(R.string.private_history_tester_restart)
                 }
                 AlertDialog.Builder(requireContext()).setMessage(message)
                     .setPositiveButton(android.R.string.ok, null).show()
@@ -348,7 +377,9 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
         preference.isEnabled = false
         preference.summary = getString(R.string.private_history_cleanup_running)
         viewLifecycleOwner.lifecycleScope.launch {
-            val removed = withContext(Dispatchers.IO) { cleaner().purgeMatchingHistory() }
+            val removed = withContext(Dispatchers.IO) {
+                cleaner().purgeMatchingHistory(includeRestartRules = true)
+            }
             preference.isEnabled = true
             preference.summary = getString(R.string.private_history_cleanup_summary)
             refreshStats()
@@ -455,6 +486,51 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
         dialog.show()
     }
 
+    private fun showEncryptedQr(passphrase: CharArray) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.Default) {
+                runCatching {
+                    val bundle = PrivateHistoryBackup.exportEncrypted(requireContext(), passphrase)
+                    QRCodeGenerator().generateQRCodeImage(bundle, QR_SIZE, QR_SIZE, requireContext())
+                }
+            }.getOrElse {
+                showToast(R.string.private_history_backup_qr_too_large)
+                return@launch
+            }
+            val padding = (16 * resources.displayMetrics.density).toInt()
+            val image = ImageView(requireContext()).apply {
+                adjustViewBounds = true
+                contentDescription = getString(R.string.private_history_backup_qr_ready)
+                setPadding(padding, padding, padding, padding)
+                setImageBitmap(bitmap)
+            }
+            AlertDialog.Builder(requireContext())
+                .setTitle(R.string.private_history_backup_qr_export_title)
+                .setMessage(R.string.private_history_backup_qr_ready)
+                .setView(image)
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+        }
+    }
+
+    private fun importEncryptedBundle(bundle: String, passphrase: CharArray) {
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { PrivateHistoryBackup.importEncrypted(requireContext(), bundle, passphrase) }.fold(
+                onSuccess = { count ->
+                    withContext(Dispatchers.Main) {
+                        refreshRuleSummaries()
+                        Toast.makeText(
+                            requireContext(),
+                            getString(R.string.private_history_backup_imported, count),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                },
+                onFailure = { showToast(R.string.private_history_backup_failed) },
+            )
+        }
+    }
+
     private suspend fun showToast(resId: Int) = withContext(Dispatchers.Main) {
         Toast.makeText(requireContext(), resId, Toast.LENGTH_LONG).show()
     }
@@ -470,9 +546,12 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
         private const val KEY_TEMPORARY_MODE = "private_history_temporary_mode"
         private const val KEY_BACKUP_EXPORT = "private_history_backup_export"
         private const val KEY_BACKUP_IMPORT = "private_history_backup_import"
+        private const val KEY_BACKUP_QR_EXPORT = "private_history_backup_qr_export"
+        private const val KEY_BACKUP_QR_IMPORT = "private_history_backup_qr_import"
         private const val KEY_SELF_TEST = "private_history_self_test"
         private const val KEY_UPDATE_STATUS = "fenix_privacy_update_status"
         private const val KEY_RELEASE_NOTES = "fenix_privacy_release_notes"
         private const val KEY_CLEANUP = "private_history_cleanup"
+        private const val QR_SIZE = 1024
     }
 }

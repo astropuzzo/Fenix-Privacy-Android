@@ -27,6 +27,13 @@ object PrivateHistorySelfTest {
             action = PrivateHistoryRule.Action.COLLAPSE_TO_ROOT,
         )
         check("rule-codec") { PrivateHistoryRule.decode(PrivateHistoryRule.encode(listOf(sample))) == listOf(sample) }
+        val delayed = sample.copy(
+            action = PrivateHistoryRule.Action.FORGET_AFTER,
+            retentionMillis = 3_600_000L,
+        )
+        check("delayed-rule-codec") {
+            PrivateHistoryRule.decode(PrivateHistoryRule.encode(listOf(delayed))).single() == delayed
+        }
         check("root-canonicalization") {
             PrivateHistoryRules(context).siteRoot("https://privacy-self-test.invalid/path?q=x") ==
                 "https://privacy-self-test.invalid/"

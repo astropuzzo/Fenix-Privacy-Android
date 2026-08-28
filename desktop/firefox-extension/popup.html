@@ -8,6 +8,22 @@
 </head>
 <body class="popup">
   <header><strong>Fenix Privacy</strong><span class="badge">Desktop</span></header>
+  <section class="page-card" aria-live="polite">
+    <div class="page-heading">
+      <img id="pageShield" src="icons/shield-idle.svg" alt="">
+      <div><strong id="pageHost">Current page</strong><small id="pageAction">Checking protection…</small></div>
+    </div>
+    <p id="pageReason" class="page-reason"></p>
+    <div class="context-grid">
+      <button id="blockSite">Never save site</button>
+      <button id="keepHomepage">Keep homepage</button>
+      <button id="allowPage">Always allow page</button>
+      <button id="forgetRestart">Forget on restart</button>
+      <button id="forget24">Forget after 24 hours</button>
+      <button id="toggleTab">Shield tab + children</button>
+      <button id="protectNext">Shield next page</button>
+    </div>
+  </section>
   <label class="switch-row"><span>History protection</span><input id="enabled" type="checkbox"></label>
   <div class="stat"><span>Status</span><strong id="health">Checking…</strong></div>
   <div class="stat"><span>Rules</span><strong id="rules">0</strong></div>
@@ -15,7 +31,7 @@
   <div class="stat"><span>Today / week</span><strong id="period">0 / 0</strong></div>
   <div class="stat"><span>Collapsed to homepage</span><strong id="collapsed">0</strong></div>
   <div class="stat"><span>Last match</span><strong id="lastMatch">Never</strong></div>
-  <div class="actions wrap popup-actions"><button id="temp15">Shield 15 min</button><button id="tempTab">This tab only</button></div>
+  <div class="actions wrap popup-actions"><button id="temp15">Shield 15 min</button><button id="temp60">Shield 1 hour</button><button id="tempSession">Shield this session</button></div>
   <button id="clean" class="primary">Preview + clean history</button>
   <button id="options">Open rules</button>
   <p id="status" class="status"></p>

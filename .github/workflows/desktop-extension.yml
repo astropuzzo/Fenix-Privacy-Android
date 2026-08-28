@@ -6,11 +6,13 @@ on:
     branches: [main]
     paths:
       - 'desktop/**'
+      - 'shared/**'
       - '.github/workflows/desktop-extension.yml'
   pull_request:
     branches: [main]
     paths:
       - 'desktop/**'
+      - 'shared/**'
       - '.github/workflows/desktop-extension.yml'
 
 permissions:
@@ -42,7 +44,7 @@ jobs:
           set -euo pipefail
           # AMO rejects an already-submitted version. Include the run attempt so
           # rerunning a job after a downstream failure always submits a newer XPI.
-          VERSION="1.0.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          VERSION="3.0.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           node - "$VERSION" <<'NODE'
           const fs = require('fs');
           const file = 'desktop/firefox-extension/manifest.json';
@@ -149,6 +151,8 @@ jobs:
   windows-installer:
     needs: extension
     runs-on: windows-latest
+    outputs:
+      authenticode_signed: ${{ steps.authenticode.outputs.signed }}
 
     steps:
       - uses: actions/checkout@v4
@@ -201,12 +205,66 @@ jobs:
 
           Get-ChildItem "out\*.exe"
 
+      - name: Authenticode sign and verify Windows installer when configured
+        id: authenticode
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        run: |
+          "signed=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $encoded = ($env:WINDOWS_SIGNING_PFX_BASE64 -replace '\s', '')
+          $password = $env:WINDOWS_SIGNING_PFX_PASSWORD
+          if ([string]::IsNullOrWhiteSpace($encoded) -or [string]::IsNullOrEmpty($password)) {
+            Write-Host "::notice::Authenticode certificate not configured. The EXE will remain unsigned; the bundled XPI is still Mozilla-signed on production builds."
+            exit 0
+          }
+
+          $pfx = Join-Path $env:RUNNER_TEMP "fenix-privacy-authenticode.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($encoded))
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+              -Filter signtool.exe -File -Recurse |
+              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            if ($null -eq $signtool) {
+              throw "signtool.exe was not found in the Windows SDK"
+            }
+            $exe = (Get-ChildItem "out\*.exe" -File | Select-Object -First 1).FullName
+            if ([string]::IsNullOrWhiteSpace($exe)) {
+              throw "Windows installer was not found"
+            }
+
+            & $signtool.FullName sign /fd SHA256 /td SHA256 `
+              /tr "http://timestamp.digicert.com" /f $pfx /p $password $exe
+            if ($LASTEXITCODE -ne 0) {
+              throw "signtool sign failed with exit code $LASTEXITCODE"
+            }
+            & $signtool.FullName verify /pa /all /v $exe
+            if ($LASTEXITCODE -ne 0) {
+              throw "signtool verification failed with exit code $LASTEXITCODE"
+            }
+            $signature = Get-AuthenticodeSignature $exe
+            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+              throw "Authenticode status is $($signature.Status), expected Valid"
+            }
+            "signed=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } finally {
+            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Assemble desktop artifacts
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path final | Out-Null
           Copy-Item artifacts\*.xpi final\
           Copy-Item out\*.exe final\
+          @{
+            version = "${{ needs.extension.outputs.version }}"
+            xpiMozillaSigned = ("${{ needs.extension.outputs.signed }}" -eq "true")
+            exeAuthenticodeSigned = ("${{ steps.authenticode.outputs.signed }}" -eq "true")
+          } | ConvertTo-Json | Set-Content final\desktop-signing.json -Encoding utf8
 
       - name: Upload Windows desktop artifact
         uses: actions/upload-artifact@v4
@@ -235,6 +293,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.extension.outputs.version }}
           SIGNED: ${{ needs.extension.outputs.signed }}
+          EXE_SIGNED: ${{ needs.windows-installer.outputs.authenticode_signed }}
           RELEASE_TAG: ${{ needs.extension.outputs.release_tag }}
         shell: bash
         run: |
@@ -245,24 +304,33 @@ jobs:
             exit 1
           }
 
+          if [[ "$EXE_SIGNED" == "true" ]]; then
+            EXE_NOTE="The Windows installer is Authenticode-signed and verified; it installs the same Mozilla-signed XPI."
+          else
+            EXE_NOTE="The Windows installer is not Authenticode-signed because no code-signing certificate was configured; it contains the Mozilla-signed XPI and Firefox still performs its normal add-on confirmation."
+          fi
+
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" \
               final/Fenix-Privacy-Desktop.xpi \
               final/Fenix-Privacy-Desktop-Installer.exe \
+              final/desktop-signing.json \
               --clobber
           else
             gh release create "$RELEASE_TAG" \
               final/Fenix-Privacy-Desktop.xpi \
               final/Fenix-Privacy-Desktop-Installer.exe \
+              final/desktop-signing.json \
               --latest=false \
               --title "Fenix Privacy Desktop $VERSION" \
-              --notes "Production release: Mozilla-signed Firefox extension for Windows, macOS and Linux, plus the Windows installer EXE. The EXE launches the same signed XPI in Firefox for the normal add-on confirmation."
+              --notes "Production release: Mozilla-signed Firefox extension for Windows, macOS and Linux, plus the Windows installer EXE. $EXE_NOTE"
           fi
 
           ASSETS="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
           printf '%s\n' "$ASSETS"
           grep -Fxq 'Fenix-Privacy-Desktop.xpi' <<< "$ASSETS"
           grep -Fxq 'Fenix-Privacy-Desktop-Installer.exe' <<< "$ASSETS"
+          grep -Fxq 'desktop-signing.json' <<< "$ASSETS"
 
       - name: Publish Firefox self-update manifest
         env:

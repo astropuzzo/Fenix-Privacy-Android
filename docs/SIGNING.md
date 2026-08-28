@@ -40,3 +40,12 @@ Do not save the visually masked JWT value containing dots: GitHub needs the
 complete underlying secret. Main-branch and manual desktop releases fail closed
 if either secret is missing or AMO rejects it. Unsigned XPIs are produced only
 as pull-request test artifacts and are never published as installable releases.
+
+## Optional Windows Authenticode certificate
+
+Mozilla signs the XPI; a separate code-signing certificate is required to sign the Windows installer executable. Add both repository secrets to enable it:
+
+- `WINDOWS_SIGNING_PFX_BASE64` — base64 of the complete code-signing PFX.
+- `WINDOWS_SIGNING_PFX_PASSWORD` — PFX password.
+
+CI decodes the PFX only on the ephemeral Windows runner, signs with SHA-256 and an RFC 3161 timestamp, verifies the resulting Authenticode chain, and deletes the PFX. If either secret is absent, the build can still publish the mandatory Mozilla-signed XPI and installer, but `desktop-signing.json` and the release notes explicitly mark the EXE as not Authenticode-signed.

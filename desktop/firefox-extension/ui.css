@@ -1,7 +1,7 @@
 :root { color-scheme: light dark; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 * { box-sizing: border-box; }
 body { margin: 0; background: Canvas; color: CanvasText; }
-.popup { width: 320px; padding: 16px; }
+.popup { width: 390px; padding: 16px; }
 .popup header, .hero, .actions, .switch-row, .stat { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .popup button { width: 100%; margin-top: 10px; }
 .options main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 96px; }
@@ -23,6 +23,15 @@ button, .file-button { border: 1px solid color-mix(in srgb, CanvasText 22%, tran
 .stat { margin: 12px 0; padding: 10px 0; border-top: 1px solid color-mix(in srgb, CanvasText 14%, transparent); border-bottom: 1px solid color-mix(in srgb, CanvasText 14%, transparent); }
 .status { min-height: 20px; margin: 10px 0 0; }
 .status.error { color: #d33; }
+.page-card { margin: 12px 0; padding: 12px; border: 1px solid color-mix(in srgb, #6e5df6 45%, CanvasText 12%); border-radius: 12px; background: color-mix(in srgb, #6e5df6 8%, Canvas); }
+.page-heading { display: flex; align-items: center; gap: 10px; }
+.page-heading img { width: 28px; height: 28px; flex: none; }
+.page-heading > div { display: grid; min-width: 0; }
+.page-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-reason { margin: 8px 0; font-size: 12px; overflow-wrap: anywhere; }
+.context-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.popup .context-grid button { margin: 0; padding: 7px 8px; font-size: 12px; }
+.context-grid button:disabled { cursor: not-allowed; opacity: .45; }
 code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .dashboard-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .metric { display: grid; gap: 4px; padding: 12px; border-radius: 10px; background: color-mix(in srgb, CanvasText 7%, transparent); }
@@ -34,7 +43,13 @@ code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .rule-row > div:first-child { display: grid; gap: 3px; min-width: 0; }.rule-row small { overflow-wrap: anywhere; }
 .rule-row.paused { opacity: .58; }.actions.compact { margin: 0; flex-wrap: nowrap; }.actions.compact button { padding: 6px 8px; }
 .empty-state { padding: 12px; text-align: center; border: 1px dashed color-mix(in srgb, CanvasText 20%, transparent); border-radius: 9px; }
+.rule-warnings:not(:empty) { margin-top: 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, #d99100 50%, CanvasText 12%); border-radius: 9px; background: color-mix(in srgb, #d99100 9%, Canvas); }
+.rule-warnings p { margin: 5px 0 0; }
 .danger-options { margin-top: 14px; border: 1px solid color-mix(in srgb, #d55 35%, transparent); border-radius: 9px; padding: 10px 12px; }
+.qr-dialog { max-width: min(620px, 92vw); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 14px; background: Canvas; color: CanvasText; }
+.qr-dialog::backdrop { background: rgb(0 0 0 / .55); }
+.qr-dialog img { display: block; width: min(520px, 80vw); height: auto; margin: 12px auto; image-rendering: pixelated; background: white; }
+.dialog-close { float: right; border: 0; font-size: 22px; padding: 2px 8px; }
 details > summary { cursor: pointer; }.bottom-actions { align-items: end; height: 100%; }
 .sticky-status { position: sticky; bottom: 0; z-index: 3; padding: 12px; border-radius: 9px; background: color-mix(in srgb, Canvas 88%, CanvasText 12%); box-shadow: 0 -5px 18px color-mix(in srgb, CanvasText 12%, transparent); }
 @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } .hero { display: block; } .hero .badge { display: inline-block; margin-top: 8px; } }
