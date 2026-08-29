@@ -267,12 +267,15 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("rules.shouldCloseTab", source)
         action_source = (source_dir / "PrivateHistoryActionExecutor.kt").read_text(encoding="utf-8")
         worker_source = (source_dir / "PrivateHistoryMaintenanceWorker.kt").read_text(encoding="utf-8")
+        tab_source = (source_dir / "PrivateHistoryTabProtection.kt").read_text(encoding="utf-8")
         self.assertNotIn("if (rule.closeTab)", action_source)
         self.assertIn(".filter { it.restored }", action_source)
         self.assertIn("if (!rule.clearCookies && !rule.clearCache && !rule.clearDownloads) return", action_source)
         self.assertIn("closeRestoredMatchingTabs()", action_source)
         self.assertIn("inputData.getBoolean(KEY_CLOSE_RESTORED_TABS, false)", worker_source)
         self.assertIn("workDataOf(KEY_CLOSE_RESTORED_TABS to true)", worker_source)
+        self.assertIn("oneShots.containsKey(tabId)", tab_source)
+        self.assertNotIn("tabId in oneShots", tab_source)
         self.assertIn("Cookies and logins stay saved", (ROOT / "README.md").read_text(encoding="utf-8"))
 
     def test_public_android_release_confirmation_uses_release_date(self):

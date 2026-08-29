@@ -53,7 +53,7 @@ object PrivateHistoryTabProtection {
 
     fun isTabProtected(tabId: String): Boolean = tabId in protectedTabs
 
-    fun isNextArmed(tabId: String): Boolean = tabId in oneShots
+    fun isNextArmed(tabId: String): Boolean = oneShots.containsKey(tabId)
 
     fun isProtectedUri(uri: String): Boolean =
         protectedTabs.any { currentUrls[it] == uri } || oneShots.values.any { it.protectedUrl == uri }
