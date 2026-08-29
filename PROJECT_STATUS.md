@@ -1,6 +1,6 @@
 # Project status
 
-Last audited: 2026-08-28
+Last audited: 2026-08-29
 
 ## Upstream baseline
 
@@ -44,9 +44,15 @@ Last audited: 2026-08-28
 - Signing JKS fingerprint matches `SIGNING_CERT_SHA256`.
 - Repository secret scan confirms no keystore payload or signing passwords are present.
 
-## Still gated on CI/device validation
+## Release validation
 
-A full Firefox Android release build is intentionally not claimed here: this workspace does not contain the complete Mozilla source/toolchain checkout. The pull-request workflow is the compilation gate and produces an unsigned ARM64 smoke-test APK; the main-branch workflow signs, verifies and publishes the production APK.
+- Pull request #12 passed the complete Desktop XPI/Windows EXE gate and the full Firefox Android compile, unit-test, ARM64 APK and ABI/package validation gate.
+- Android production release `v154.0.1-privacy.20260829065837` is signed with APK Signature Scheme v2/v3; its pinned certificate, Gecko runtime, package identity and SHA-256 were verified in CI.
+- Desktop production release `desktop-v3.0.46.1` contains a Mozilla AMO-signed XPI plus the Windows installer for that same XPI.
+- Production Downloads run #31 published the new Android and Desktop artifacts, hashes, update feed, release index and truthful per-artifact signing metadata.
+- The Windows EXE is not Authenticode-signed because the separate Windows code-signing certificate is not configured; the XPI it installs is Mozilla-signed.
+
+Physical device smoke-testing remains recommended for UI ergonomics, sign-in/Sync and the Android Package Installer handoff; compilation, automated tests and production signing are complete.
 
 Android requires user confirmation for normal APK updates; a non-root/non-device-owner app cannot silently install its own update.
 
