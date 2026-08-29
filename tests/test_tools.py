@@ -305,6 +305,8 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("Android autofill immediate relock", patcher)
         self.assertIn("Origin-bound login picker implementation", patcher)
         self.assertIn("Fenix current-origin login unlock", patcher)
+        self.assertIn('"                        Unit\\n"', patcher)
+        self.assertIn('"                            Unit\\n"', patcher)
         self.assertIn("setNegativeButtonText(activity.getString(android.R.string.cancel))", patcher)
 
         schema = json.loads((ROOT / "shared/privacy-rule-schema.json").read_text(encoding="utf-8"))

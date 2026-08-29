@@ -1254,6 +1254,7 @@ def patch_origin_bound_login_picker(target: Path) -> None:
         "                        biometricPromptFeature.get()?.requestAuthentication(\n"
         "                            getString(R.string.private_password_auth_title),\n"
         "                        ) ?: promptsFeature.get()?.onBiometricResult(isAuthenticated = false)\n"
+        "                        Unit\n"
         "                    }\n"
         "                    override val fetchUnlockedLogins =\n"
         "                        { origin: String, privateAccess: Boolean, onResult: (List<Login>) -> Unit ->\n"
@@ -1268,6 +1269,7 @@ def patch_origin_bound_login_picker(target: Path) -> None:
         "                                }\n"
         "                                onResult(logins)\n"
         "                            }\n"
+        "                            Unit\n"
         "                        }\n"
         "                },"
     )
