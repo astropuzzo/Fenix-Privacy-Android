@@ -26,4 +26,7 @@ object PrivatePasswordAccess {
     )
 
     fun isLockedLogin(login: Login): Boolean = login.guid == LOCKED_GUID
+
+    fun isProtected(login: Login, legacyRules: PrivateHistoryRules): Boolean =
+        PrivatePasswordMetadata.isProtected(login) || legacyRules.shouldProtectLogin(login.origin)
 }

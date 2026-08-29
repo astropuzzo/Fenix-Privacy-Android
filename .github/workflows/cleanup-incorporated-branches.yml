@@ -1,0 +1,59 @@
+name: One-time incorporated branch cleanup
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: contains(github.event.head_commit.message, '[cleanup-incorporated-branches]')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Delete exact incorporated branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          branches=(
+            "chore/trigger-main-release-builds"
+            "feat/privacy-studio-3-contextual-shield"
+            "feat/privacy-studio-v2"
+            "feature/android-privacy-counter"
+            "feature/definitive-private-password-sync"
+            "feature/private-password-tier"
+            "fix/android-bootstrap-no-avd"
+            "fix/arm64-startup-crash"
+            "fix/automatic-build-artifacts"
+            "fix/defer-tab-closure"
+            "fix/privacy-runtime-logic"
+            "fix/reliable-signed-builds"
+            "fix/restored-tab-closure"
+            "fix/webext-self-hosted-lint"
+            "release/production-downloads"
+          )
+          for branch in "${branches[@]}"; do
+            encoded="${branch//\//%2F}"
+            status="$(gh api --method DELETE               -H "Accept: application/vnd.github+json"               "repos/${GITHUB_REPOSITORY}/git/refs/heads/${encoded}"               --include 2>&1 | head -n 1 || true)"
+            if [[ "${status}" == *"204 No Content"* || "${status}" == *"404 Not Found"* || "${status}" == *"422 Unprocessable Entity"* ]]; then
+              printf '%s\n' "processed ${branch}"
+            else
+              printf '%s\n' "failed ${branch}: ${status}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Verify only main remains
+        shell: bash
+        run: |
+          set -euo pipefail
+          remaining="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/branches?per_page=100"             --jq '.[].name' | sort)"
+          if [[ "${remaining}" != "main" ]]; then
+            printf '%s\n' "Unexpected remaining branches:" "${remaining}" >&2
+            exit 1
+          fi
+          printf '%s\n' "Only main remains."

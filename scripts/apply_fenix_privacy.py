@@ -538,6 +538,8 @@ def patch_login_data_gate(target: Path) -> None:
         "    private val requiresAuthentication: (domain: String) -> Boolean = { false },\n"
         "    private val lockedLoginFactory: (domain: String) -> Login? = { null },\n"
         "    private val isLockedLogin: (login: Login) -> Boolean = { false },\n"
+        "    private val prepareLoginForSave: suspend (LoginsStorage, LoginEntry) -> LoginEntry =\n"
+        "        { _, login -> login },\n"
         "    private val logger: Logger = Logger(\"GeckoLoginStorageDelegate\"),",
         "Gecko login privacy callbacks",
     )
@@ -565,6 +567,17 @@ def patch_login_data_gate(target: Path) -> None:
         "        return scope.async {",
         "Gecko pre-authentication decoy",
     )
+    s = replace_once(
+        s,
+        "        scope.launch {\n"
+        "            try {\n"
+        "                loginStorage.value.addOrUpdate(login)",
+        "        scope.launch {\n"
+        "            try {\n"
+        "                val storage = loginStorage.value\n"
+        "                storage.addOrUpdate(prepareLoginForSave(storage, login))",
+        "Gecko preserve private metadata on password save",
+    )
     write(path, s)
 
     path = target / "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/gecko/GeckoProvider.kt"
@@ -573,7 +586,9 @@ def patch_login_data_gate(target: Path) -> None:
     s = replace_once(
         s,
         anchor,
-        anchor + "import org.mozilla.fenix.privacyhistory.PrivatePasswordAccess\n",
+        anchor +
+        "import org.mozilla.fenix.privacyhistory.PrivatePasswordAccess\n"
+        "import org.mozilla.fenix.privacyhistory.PrivatePasswordMetadata\n",
         "Gecko private password import",
     )
     s = replace_once(
@@ -584,6 +599,12 @@ def patch_login_data_gate(target: Path) -> None:
         "                requiresAuthentication = { true },\n"
         "                lockedLoginFactory = PrivatePasswordAccess::lockedLogin,\n"
         "                isLockedLogin = PrivatePasswordAccess::isLockedLogin,\n"
+        "                prepareLoginForSave = { storage, login ->\n"
+        "                    PrivatePasswordMetadata.preserveProtection(\n"
+        "                        storage.findLoginToUpdate(login),\n"
+        "                        login,\n"
+        "                    )\n"
+        "                },\n"
         "            ),",
         "Gecko origin-bound password gate",
     )
@@ -693,7 +714,12 @@ def patch_login_data_gate(target: Path) -> None:
         "            storage = core.passwordsStorage,\n"
         "            publicSuffixList = publicSuffixList,",
         "            storage = core.passwordsStorage,\n"
-        "            loginFilter = { login -> !core.privateHistoryRules.shouldProtectLogin(login.origin) },\n"
+        "            loginFilter = { login ->\n"
+        "                !org.mozilla.fenix.privacyhistory.PrivatePasswordAccess.isProtected(\n"
+        "                    login,\n"
+        "                    core.privateHistoryRules,\n"
+        "                )\n"
+        "            },\n"
         "            publicSuffixList = publicSuffixList,",
         "Fenix external autofill private-login filter",
     )
@@ -750,7 +776,8 @@ def patch_login_data_gate(target: Path) -> None:
         "                        ),",
         "                            clipboardManager = requireContext().getSystemService(),\n"
         "                            isLoginVisible = { login ->\n"
-        "                                !privateHistoryRules.shouldProtectLogin(login.origin)\n"
+        "                                !org.mozilla.fenix.privacyhistory.PrivatePasswordAccess\n"
+        "                                    .isProtected(login, privateHistoryRules)\n"
         "                            },\n"
         "                        ),",
         "Saved logins ordinary-list privacy filter",
@@ -1224,7 +1251,9 @@ def patch_origin_bound_login_picker(target: Path) -> None:
     s = replace_once(
         s,
         anchor,
-        anchor + "import org.mozilla.fenix.privacyhistory.PrivatePasswordAccess\n",
+        anchor +
+        "import org.mozilla.fenix.privacyhistory.PrivatePasswordAccess\n"
+        "import org.mozilla.fenix.privacyhistory.PrivatePasswordMetadata\n",
         "Browser private password access import",
     )
     old = (
@@ -1263,9 +1292,15 @@ def patch_origin_bound_login_picker(target: Path) -> None:
         "                                    context.components.core.passwordsStorage\n"
         "                                        .getByBaseDomain(origin)\n"
         "                                        .filter { login ->\n"
-        "                                            context.components.core.privateHistoryRules\n"
-        "                                                .shouldProtectLogin(login.origin) == privateAccess\n"
+        "                                            PrivatePasswordMetadata.matchesOrigin(login, origin)\n"
         "                                        }\n"
+        "                                        .filter { login ->\n"
+        "                                            PrivatePasswordAccess.isProtected(\n"
+        "                                                login,\n"
+        "                                                context.components.core.privateHistoryRules,\n"
+        "                                            ) == privateAccess\n"
+        "                                        }\n"
+        "                                        .map(PrivatePasswordMetadata::forUse)\n"
         "                                }\n"
         "                                onResult(logins)\n"
         "                            }\n"

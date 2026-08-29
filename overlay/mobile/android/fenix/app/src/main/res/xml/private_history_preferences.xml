@@ -155,6 +155,13 @@
         android:layout="@layout/preference_category_no_icon_style">
 
         <androidx.preference.Preference
+            android:key="private_history_passwords"
+            android:persistent="false"
+            android:title="@string/private_password_manager_title"
+            android:summary="@string/private_password_manager_summary"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
             android:key="private_history_backup_export"
             android:title="@string/private_history_backup_export_title"
             android:summary="@string/private_history_backup_export_summary"

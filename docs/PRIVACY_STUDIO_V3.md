@@ -40,3 +40,7 @@ Allow rules have priority over ordinary visual and legacy rules. Global temporar
 - Optional site-data actions require explicit per-rule consent and platform permissions.
 - Encrypted transfer uses PBKDF2-HMAC-SHA256 with 210,000 iterations, AES-256-GCM, and a fresh salt and IV.
 - Rule-builder conflict and duplicate warnings are computed locally.
+
+## Password privacy scope
+
+The per-credential private-password tier is enforced by the native Android build and synchronizes through Firefox Password Sync. The current Desktop package is a WebExtension and cannot access or filter Firefox's native `about:logins` data. Its visual rule builder intentionally exposes no password-protection switch; preview-era `protectLogin` fields remain schema-compatible only so Android can migrate them safely.

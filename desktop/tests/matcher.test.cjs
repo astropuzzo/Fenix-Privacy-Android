@@ -15,7 +15,6 @@ const requiredOptionIds = [
   "metricTotal", "metricWeek", "openAddons", "previewClean", "pullEncryptedSync",
   "pushEncryptedSync", "queryParameterRow", "regex", "resetCounter", "ruleAction",
   "ruleClearCache", "ruleClearCookies", "ruleClearDownloads", "ruleCloseTab", "ruleExpiry",
-  "ruleProtectLogin",
   "ruleMatcher", "ruleName", "ruleProfile", "ruleQueryParameter", "ruleRetentionHours", "ruleValue", "save",
   "scrubEveryMinutes", "scrubOnStartup", "selfTest", "selfTestResult", "status", "syncRules",
   "temporaryStatus", "test", "testResult", "testTitle", "testUrl", "updateCenter", "showQr",
@@ -28,6 +27,11 @@ for (const id of requiredOptionIds) {
 const optionIds = [...optionsHtml.matchAll(/\bid=["']([^"']+)["']/g)].map((match) => match[1]);
 assert.equal(new Set(optionIds).size, optionIds.length, "options.html IDs must be unique");
 assert.match(optionsHtml, /<\/html>\s*$/, "options.html must be a complete document");
+assert.doesNotMatch(
+  optionsHtml,
+  /ruleProtectLogin|Mark matching passwords/i,
+  "Desktop must not offer a password control that a WebExtension cannot enforce",
+);
 
 const popupHtml = fs.readFileSync(
   path.join(__dirname, "..", "firefox-extension", "popup.html"),

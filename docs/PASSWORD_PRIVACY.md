@@ -1,73 +1,88 @@
 # Password privacy tiers
 
-## Status
+## What is implemented
 
-The Android fork contains the first native implementation of an origin-bound password gate.
-It is intentionally fail-closed and does not describe the current Desktop WebExtension as a
-password-manager protection: a WebExtension cannot filter Firefox's native `about:logins` UI.
+Fenix Privacy for Android has an origin-bound, per-credential privacy tier. It does not create a
+visible vault, a hidden-site list, a private-credential count or a synthetic password record.
 
-Password records and their privacy classification have different recovery properties today:
+The classification travels inside the existing Firefox login record. Firefox Password Sync
+therefore encrypts, uploads, merges and restores the password and its privacy status together when
+Password Sync is enabled.
 
-| Data | Android protection | Recovery today |
+| Data | Before strong biometric | Recovery |
 | --- | --- | --- |
-| Saved username/password | Firefox login database; never returned to Gecko before authentication | Firefox Accounts password Sync, when enabled |
-| `protectLogin` rule flag | App-private rules, hidden behind a fresh strong biometric | AES-256-GCM `.fprules` export/import |
-| Desktop native password list | Not controlled by this WebExtension | Requires a privileged/native Firefox Desktop implementation |
+| Standard credentials | No origin, username, password or count is read or rendered | Firefox Accounts Password Sync |
+| Private credentials | Omitted from ordinary lists, searches and external Android Autofill | Firefox Accounts Password Sync, including the private marker |
+| History rules | Rule details remain behind strong biometric | Encrypted `.fprules` export/import |
+| Desktop native password list | Not controlled by the current WebExtension | Requires a privileged/native Firefox Desktop build |
 
-Firefox for Android implements the WebExtension `storage.sync` API as device-local storage; it
-does not synchronize that data with a Mozilla account. Consequently, the repository must not
-claim that Desktop extension storage is an Android recovery channel. See Mozilla's
+Firefox for Android does not synchronize WebExtension `storage.sync` data with the user's Mozilla
+account. Password privacy therefore uses the native Password Sync record, not extension storage.
+See Mozilla's
 [`storage.sync` documentation](https://developer.mozilla.org/docs/Mozilla/Add-ons/WebExtensions/API/storage/sync).
 
-## Android user flow
+## Set up and manage passwords
 
-1. Add or edit an ordinary Privacy Studio rule and enable **Protect matching saved passwords**.
-   There is no separately named vault or visible private-password section.
-2. When a login field is focused, Firefox displays one generic **Unlock saved passwords** action.
-   Before authentication it contains no real origin, username, password or credential count.
-3. Tap that action and pass a fresh class-3/strong biometric to use ordinary credentials for the
-   current site.
-4. Long-press the same action and pass the same fresh biometric to use protected credentials for
-   the current site. A zero-result lookup simply closes the prompt, so the pre-authentication UI
-   does not reveal whether a protected record exists.
+1. Sign in to the Mozilla account in Fenix Privacy and enable **Passwords** in Sync.
+2. Open **Settings → Private history rules** and pass a fresh class-3/strong biometric.
+3. Open the neutral **Saved passwords** row.
+4. Select a credential and choose **Use private access**. The same menu can return it to standard
+   access, edit it or delete it.
+5. Wait for Firefox Sync, or use **Sync now**, before uninstalling or moving to another Fenix Privacy
+   Android installation.
 
-The normal Saved Logins list and Android's external autofill search omit protected records. The
-Privacy Studio rule screen itself requires a fresh strong biometric and does not accept the device
-PIN. Leaving the screen locks it again.
+The normal password screen never shows private records. The neutral management row has no private
+word, badge, domain or count before biometric authentication. Android screenshots and Recents
+previews are blocked while sensitive management data is visible.
+
+The preview release stored password classification on visual history rules. The first successful
+open of **Saved passwords** migrates every matching form credential into its own synchronized login
+record and removes the old flags only after the writes succeed.
+
+## Use a password on a website
+
+1. Focus the website's login field.
+2. Firefox always shows one neutral **Unlock saved passwords** action. It is shown even when the
+   current site has no saved login, so its presence reveals nothing.
+3. Tap it, then pass a fresh strong biometric, to retrieve only standard credentials for the current
+   origin.
+4. Long-press the same neutral action, then pass a fresh strong biometric, to retrieve only private
+   credentials for the current origin.
+5. If the requested tier has no matching credential, the prompt closes without revealing a count.
+
+The device PIN is never accepted. Every new fill request starts locked; the Android Autofill
+authentication cache is disabled.
 
 ## Security invariants
 
-- Gecko receives only a transient neutral action until authentication succeeds.
-- The real lookup is performed after authentication and only for the current origin.
-- A normal tap and a long-press use mutually exclusive standard/private filters.
-- The authentication cache in Android Autofill is disabled; every new fill request starts locked.
-- Strong biometric availability is checked explicitly. Missing enrollment or hardware fails
-  closed; there is no PIN or unsecured-warning bypass.
-- Protected records are filtered from the ordinary Saved Logins UI and external autofill search.
-- Legacy history domain/keyword lists never hide passwords after an upgrade. Only an explicit
-  `protectLogin` flag on an active visual rule can classify a login as protected.
+- Gecko receives only a transient, metadata-free action before authentication.
+- Real records are queried only after authentication and only for the current origin.
+- Standard and private result sets are mutually exclusive.
+- Internal private metadata is stripped before an authenticated credential reaches Gecko.
+- Private records are filtered from the ordinary Saved Logins UI and Android Autofill search.
+- Website password updates preserve the synchronized private marker.
+- Privacy Studio re-locks when left and uses Android `FLAG_SECURE` while sensitive data is visible.
+- Migration never clears preview flags before the corresponding login updates succeed.
 
-## Limits that remain
+## Reinstall and device replacement
 
-- Firefox Sync still sends the underlying login to every signed-in Firefox client. An official or
-  otherwise unmodified Firefox client can display it because it does not understand this privacy
-  tier. End-to-end password Sync is recovery, not cross-client concealment.
-- Android rule classification is not yet restored automatically from a Mozilla account. Exporting
-  an encrypted `.fprules` bundle is currently required before uninstalling. The bundle includes the
-  `protectLogin` flag but never includes usernames or passwords.
-- The Desktop deliverable is a WebExtension, not a privileged Firefox fork. It preserves the rule
-  flag in encrypted bundles but cannot hide native saved logins or demand OS authentication for
-  `about:logins`.
-- This design does not defend against a rooted/compromised OS, an attacker whose biometric is
-  enrolled as strong, or a page that receives a credential after the user deliberately fills it.
+Install Fenix Privacy, sign in to the same Mozilla account, enable Password Sync and let the first
+sync finish. Both the credentials and their private status return because they are one Sync record.
+No separate `.fprules` file is required for the new password classification. A `.fprules` backup
+is still needed for history rules and for preview-era flags that have not yet been migrated.
 
-## Release criteria for complete cross-device support
+## Limits
 
-The feature should be called fully synchronized only after both of these land:
+- An official or otherwise unmodified Firefox client ignores the Fenix Privacy marker and can still
+  display the synchronized credential. Use the private tier only on Fenix Privacy clients until a
+  native Desktop build exists.
+- The current Desktop deliverable is a WebExtension. Mozilla does not expose native saved passwords
+  or `about:logins` filtering to WebExtensions, and it does not expose a portable strong-biometric
+  unlock API. The extension therefore does not pretend to protect Desktop native passwords.
+- Form-based website credentials are supported. HTTP authentication-dialog credentials cannot
+  carry this compatible marker and fail closed instead of being mislabeled as private.
+- The design does not defend against a rooted/compromised OS, an attacker whose biometric is
+  enrolled as strong, or a page after the user deliberately fills a credential.
 
-1. An end-to-end encrypted rules engine registered with Android's Firefox Accounts/App Services
-   Sync stack, with merge, deletion-tombstone and reinstall tests. A WebExtension
-   `storage.sync` shim is not sufficient on Android.
-2. A privileged/native Firefox Desktop integration that applies the same pre-authentication gate,
-   ordinary-list filter and current-origin private gesture. Until then, the Desktop checkbox is
-   labeled as an Android classification flag rather than a Desktop protection claim.
+A real Desktop equivalent requires a separately built and maintained privileged Firefox Desktop
+fork; an XPI cannot honestly provide the same guarantee.
