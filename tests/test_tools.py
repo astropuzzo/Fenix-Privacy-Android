@@ -300,6 +300,7 @@ class ToolingTests(unittest.TestCase):
         self.assertNotIn("DEVICE_CREDENTIAL", authenticator)
         self.assertIn("AtomicBoolean(false)", authenticator)
         self.assertIn("Saved logins ordinary-list privacy filter", patcher)
+        self.assertIn("Saved login visibility type import", patcher)
         self.assertIn("Autofill defer metadata lookup until authentication", patcher)
         self.assertIn("Android autofill immediate relock", patcher)
         self.assertIn("Origin-bound login picker implementation", patcher)

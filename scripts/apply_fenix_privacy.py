@@ -706,6 +706,13 @@ def patch_login_data_gate(target: Path) -> None:
     s = read(path)
     s = replace_once(
         s,
+        "import mozilla.components.concept.storage.LoginEntry\n",
+        "import mozilla.components.concept.storage.Login\n"
+        "import mozilla.components.concept.storage.LoginEntry\n",
+        "Saved login visibility type import",
+    )
+    s = replace_once(
+        s,
         "    private val clipboardManager: ClipboardManager?,\n"
         ") : Middleware<LoginsState, LoginsAction> {",
         "    private val clipboardManager: ClipboardManager?,\n"
