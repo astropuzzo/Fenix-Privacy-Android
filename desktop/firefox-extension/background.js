@@ -163,6 +163,7 @@ function normalizeVisualRule(raw = {}) {
     clearCache: Boolean(raw.clearCache),
     clearDownloads: Boolean(raw.clearDownloads),
     closeTab: Boolean(raw.closeTab),
+    protectLogin: Boolean(raw.protectLogin),
   };
 }
 

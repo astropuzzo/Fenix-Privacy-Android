@@ -24,6 +24,7 @@ data class PrivateHistoryRule(
     val clearCache: Boolean = false,
     val clearDownloads: Boolean = false,
     val closeTab: Boolean = false,
+    val protectLogin: Boolean = false,
 ) {
     val isDestructive: Boolean
         get() = clearCookies || clearCache || clearDownloads || closeTab
@@ -46,6 +47,7 @@ data class PrivateHistoryRule(
         put("clearCache", clearCache)
         put("clearDownloads", clearDownloads)
         put("closeTab", closeTab)
+        put("protectLogin", protectLogin)
     }
 
     enum class Matcher {
@@ -99,6 +101,7 @@ data class PrivateHistoryRule(
                             clearCache = item.optBoolean("clearCache", false),
                             clearDownloads = item.optBoolean("clearDownloads", false),
                             closeTab = item.optBoolean("closeTab", false),
+                            protectLogin = item.optBoolean("protectLogin", false),
                         ),
                     )
                 }

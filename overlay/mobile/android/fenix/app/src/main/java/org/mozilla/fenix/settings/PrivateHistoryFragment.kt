@@ -20,7 +20,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.preference.EditTextPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
-import androidx.preference.SwitchPreferenceCompat
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.Dispatchers
@@ -166,18 +165,6 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
             true
         }
 
-        findPreference<SwitchPreferenceCompat>(PrivateHistoryRules.KEY_BIOMETRIC_LOCK)
-            ?.setOnPreferenceChangeListener { _, newValue ->
-                if (newValue != true) return@setOnPreferenceChangeListener true
-                authenticate { success ->
-                    if (!success) {
-                        findPreference<SwitchPreferenceCompat>(PrivateHistoryRules.KEY_BIOMETRIC_LOCK)
-                            ?.isChecked = false
-                    }
-                }
-                true
-            }
-
         findPreference<Preference>(KEY_STATS_RESET)?.setOnPreferenceClickListener {
             requireComponents.core.privateHistoryStats.reset()
             refreshStats()
@@ -198,9 +185,7 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
         refreshRuleSummaries()
         refreshTemporaryMode()
         refreshUpdateStatus()
-        val locked = preferenceManager.sharedPreferences
-            ?.getBoolean(PrivateHistoryRules.KEY_BIOMETRIC_LOCK, false) == true
-        if (locked && !unlockedThisSession) {
+        if (!unlockedThisSession) {
             preferenceScreen.isEnabled = false
             authenticate { success ->
                 unlockedThisSession = success
@@ -211,6 +196,7 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
     }
 
     override fun onPause() {
+        unlockedThisSession = false
         FenixPrivacyUpdater.schedule(requireContext())
         super.onPause()
     }

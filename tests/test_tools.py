@@ -278,6 +278,40 @@ class ToolingTests(unittest.TestCase):
         self.assertNotIn("tabId in oneShots", tab_source)
         self.assertIn("Cookies and logins stay saved", (ROOT / "README.md").read_text(encoding="utf-8"))
 
+    def test_password_privacy_gate_is_origin_bound_and_fail_closed(self):
+        source_dir = (
+            ROOT
+            / "overlay/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/"
+            / "privacyhistory"
+        )
+        access = (source_dir / "PrivatePasswordAccess.kt").read_text(encoding="utf-8")
+        rules = (source_dir / "PrivateHistoryRules.kt").read_text(encoding="utf-8")
+        authenticator = (source_dir / "PrivateHistoryAuthenticator.kt").read_text(encoding="utf-8")
+        patcher = (ROOT / "scripts/apply_fenix_privacy.py").read_text(encoding="utf-8")
+
+        self.assertIn('private const val NEUTRAL_ORIGIN = "https://passwords.invalid"', access)
+        self.assertIn('username = ""', access)
+        self.assertIn('password = ""', access)
+        self.assertIn("formActionOrigin = domain", access)
+        self.assertIn("fun shouldProtectLogin(uri: String)", rules)
+        self.assertIn(".filter { it.protectLogin }", rules)
+
+        self.assertIn("BIOMETRIC_STRONG", authenticator)
+        self.assertNotIn("DEVICE_CREDENTIAL", authenticator)
+        self.assertIn("AtomicBoolean(false)", authenticator)
+        self.assertIn("Saved logins ordinary-list privacy filter", patcher)
+        self.assertIn("Saved login visibility type import", patcher)
+        self.assertIn("Autofill defer metadata lookup until authentication", patcher)
+        self.assertIn("Android autofill immediate relock", patcher)
+        self.assertIn("Origin-bound login picker implementation", patcher)
+        self.assertIn("Fenix current-origin login unlock", patcher)
+        self.assertIn('"                        Unit\\n"', patcher)
+        self.assertIn('"                            Unit\\n"', patcher)
+        self.assertIn("setNegativeButtonText(activity.getString(android.R.string.cancel))", patcher)
+
+        schema = json.loads((ROOT / "shared/privacy-rule-schema.json").read_text(encoding="utf-8"))
+        self.assertEqual(schema["properties"]["protectLogin"]["default"], False)
+
     def test_public_android_release_confirmation_uses_release_date(self):
         stable = load_module(
             "fenix_privacy_stable_ref",

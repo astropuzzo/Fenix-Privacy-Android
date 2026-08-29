@@ -39,8 +39,9 @@ The release index reports Android, Mozilla XPI and Windows Authenticode signatur
 - Device-local privacy counter: aggregate totals for pre-write blocks, title/search scrubs and startup/Sync cleanup. URLs, titles, queries and rules are never stored in the counter.
 - Dashboard: aggregate today/week/total/collapse counters, milestones, live shield state and an optional Android Quick Settings tile.
 - **Cookies and logins stay saved by default.** Site data, sessions, cache, downloads and tabs are untouched unless an optional action is explicitly enabled on one visual rule.
+- **Android password privacy tier (preview):** an explicit visual-rule flag hides matching credentials from ordinary lists and exposes only current-site results after a fresh strong biometric; a discreet long-press on the same neutral unlock action selects the protected tier.
 - AES-256-GCM `.fprules` bundles and local encrypted QR transfer move rules between Android and Desktop without including history, counters or the passphrase; Desktop can also push/pull the encrypted bundle through Firefox Sync.
-- Device biometric/PIN protection for the Android rule screen.
+- Fresh class-3/strong biometric protection for the Android rule screen and password access; the device PIN is not accepted.
 - Automatic and on-demand privacy integrity self-tests after Mozilla updates.
 - Separate Android package: `io.github.astropuzzo.fenixprivacy`, so official Firefox can stay installed.
 - Firefox Accounts/Sync code retained from upstream Fenix.
@@ -49,6 +50,7 @@ The release index reports Android, Mozilla XPI and Windows Authenticode signatur
 - Stable-upstream CI: tracks Firefox stable release tags, not Nightly commits.
 
 See [Privacy Studio 3.0](docs/PRIVACY_STUDIO_V3.md) for feature parity, matcher semantics and privacy guarantees.
+See [Password privacy tiers](docs/PASSWORD_PRIVACY.md) for the Android flow, threat model and the explicit Desktop/rule-sync limits of the preview.
 
 ## Firefox Desktop (Windows, macOS and Linux)
 
