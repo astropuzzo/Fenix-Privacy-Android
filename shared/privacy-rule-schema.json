@@ -54,6 +54,11 @@
     "clearCookies": { "type": "boolean", "default": false },
     "clearCache": { "type": "boolean", "default": false },
     "clearDownloads": { "type": "boolean", "default": false },
+    "protectLogin": {
+      "type": "boolean",
+      "default": false,
+      "description": "Keeps matching saved logins out of ordinary password lists and requires the private current-origin unlock path."
+    },
     "closeTab": {
       "type": "boolean",
       "default": false,

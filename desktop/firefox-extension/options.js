@@ -142,7 +142,7 @@ function resetBuilder() {
   $("ruleAction").value = "BLOCK";
   $("ruleRetentionHours").value = "24";
   $("ruleExpiry").value = "";
-  for (const id of ["ruleClearCookies", "ruleClearCache", "ruleClearDownloads", "ruleCloseTab"]) $(id).checked = false;
+  for (const id of ["ruleProtectLogin", "ruleClearCookies", "ruleClearCache", "ruleClearDownloads", "ruleCloseTab"]) $(id).checked = false;
   $("cancelEdit").hidden = true;
   updateBuilderVisibility();
 }
@@ -165,6 +165,7 @@ function builderRule() {
     clearCache: $("ruleClearCache").checked,
     clearDownloads: $("ruleClearDownloads").checked,
     closeTab: $("ruleCloseTab").checked,
+    protectLogin: $("ruleProtectLogin").checked,
   };
 }
 
@@ -184,6 +185,7 @@ function editRule(rule) {
   $("ruleClearCache").checked = Boolean(rule.clearCache);
   $("ruleClearDownloads").checked = Boolean(rule.clearDownloads);
   $("ruleCloseTab").checked = Boolean(rule.closeTab);
+  $("ruleProtectLogin").checked = Boolean(rule.protectLogin);
   $("cancelEdit").hidden = false;
   updateBuilderVisibility();
   $("ruleName").scrollIntoView({ behavior: "smooth", block: "center" });

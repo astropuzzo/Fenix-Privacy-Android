@@ -454,6 +454,820 @@ def patch_gradle(target: Path) -> None:
     write(path, s)
 
 
+def patch_strong_authentication(target: Path) -> None:
+    """Require a fresh strong biometric; an already-known device PIN is never sufficient."""
+    path = target / (
+        "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/settings/logins/ui/"
+        "BiometricAuthenticationUtils.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK\n"
+        "import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL\n",
+        "import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG\n",
+        "Saved logins strong biometric imports",
+    )
+    s = replace_once(
+        s,
+        ".setAllowedAuthenticators(BIOMETRIC_WEAK or DEVICE_CREDENTIAL)",
+        ".setAllowedAuthenticators(BIOMETRIC_STRONG)\n"
+        "            .setNegativeButtonText(activity.getString(android.R.string.cancel))",
+        "Saved logins strong biometric prompt",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/fenix/app/src/test/java/org/mozilla/fenix/settings/biometric/"
+        "BiometricPromptFeatureTest.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK\n"
+        "import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL\n",
+        "import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG\n",
+        "Biometric feature test strong import",
+    )
+    s = replace_once(
+        s,
+        "import org.mozilla.fenix.settings.biometric.ext.isBiometricHardwareAvailable\n"
+        "import org.mozilla.fenix.settings.biometric.ext.isEnrolled\n",
+        "",
+        "Biometric feature test obsolete helpers",
+    )
+    s = replace_once(
+        s,
+        "        verify { manager.isEnrolled() }\n"
+        "        verify { manager.isBiometricHardwareAvailable() }",
+        "        verify(exactly = 2) { manager.canAuthenticate(BIOMETRIC_STRONG) }",
+        "Biometric feature availability test",
+    )
+    s = replace_once(
+        s,
+        "        assertEquals(BIOMETRIC_WEAK or DEVICE_CREDENTIAL, promptInfo.captured.allowedAuthenticators)\n"
+        "        assertEquals(\"test\", promptInfo.captured.title)",
+        "        assertEquals(BIOMETRIC_STRONG, promptInfo.captured.allowedAuthenticators)\n"
+        "        assertEquals(testContext.getString(android.R.string.cancel), promptInfo.captured.negativeButtonText)\n"
+        "        assertEquals(\"test\", promptInfo.captured.title)",
+        "Biometric feature prompt test",
+    )
+    s = replace_once(
+        s,
+        "        callback.onAuthenticationFailed()\n\n"
+        "        assertEquals(2, authFailureCount)",
+        "        callback.onAuthenticationFailed()\n\n"
+        "        assertEquals(1, authFailureCount)",
+        "Biometric feature non-terminal mismatch test",
+    )
+    write(path, s)
+
+
+def patch_login_data_gate(target: Path) -> None:
+    """Keep real login records out of Gecko and ordinary lists until the origin-bound unlock."""
+    path = target / (
+        "mobile/android/android-components/components/service/sync-logins/src/main/java/"
+        "mozilla/components/service/sync/logins/GeckoLoginStorageDelegate.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "    private val isLoginAutofillEnabled: () -> Boolean = { false },\n"
+        "    private val logger: Logger = Logger(\"GeckoLoginStorageDelegate\"),",
+        "    private val isLoginAutofillEnabled: () -> Boolean = { false },\n"
+        "    private val requiresAuthentication: (domain: String) -> Boolean = { false },\n"
+        "    private val lockedLoginFactory: (domain: String) -> Login? = { null },\n"
+        "    private val isLockedLogin: (login: Login) -> Boolean = { false },\n"
+        "    private val logger: Logger = Logger(\"GeckoLoginStorageDelegate\"),",
+        "Gecko login privacy callbacks",
+    )
+    s = replace_once(
+        s,
+        "    override fun onLoginUsed(login: Login) {\n"
+        "        scope.launch {",
+        "    override fun onLoginUsed(login: Login) {\n"
+        "        if (isLockedLogin(login)) return\n"
+        "        scope.launch {",
+        "Gecko decoy login touch suppression",
+    )
+    s = replace_once(
+        s,
+        "        if (!isLoginAutofillEnabled()) {\n"
+        "            return CompletableDeferred(listOf())\n"
+        "        }\n"
+        "        return scope.async {",
+        "        if (!isLoginAutofillEnabled()) {\n"
+        "            return CompletableDeferred(listOf())\n"
+        "        }\n"
+        "        if (requiresAuthentication(domain)) {\n"
+        "            return CompletableDeferred(listOfNotNull(lockedLoginFactory(domain)))\n"
+        "        }\n"
+        "        return scope.async {",
+        "Gecko pre-authentication decoy",
+    )
+    write(path, s)
+
+    path = target / "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/gecko/GeckoProvider.kt"
+    s = read(path)
+    anchor = "import org.mozilla.fenix.nimbus.FxNimbus\n"
+    s = replace_once(
+        s,
+        anchor,
+        anchor + "import org.mozilla.fenix.privacyhistory.PrivatePasswordAccess\n",
+        "Gecko private password import",
+    )
+    s = replace_once(
+        s,
+        "                isLoginAutofillEnabled = { context.components.settings.shouldAutofillLogins },\n"
+        "            ),",
+        "                isLoginAutofillEnabled = { context.components.settings.shouldAutofillLogins },\n"
+        "                requiresAuthentication = { true },\n"
+        "                lockedLoginFactory = PrivatePasswordAccess::lockedLogin,\n"
+        "                isLockedLogin = PrivatePasswordAccess::isLockedLogin,\n"
+        "            ),",
+        "Gecko origin-bound password gate",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/android-components/components/feature/autofill/src/main/java/"
+        "mozilla/components/feature/autofill/AutofillConfiguration.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "import mozilla.components.concept.storage.LoginsStorage\n",
+        "import mozilla.components.concept.storage.Login\n"
+        "import mozilla.components.concept.storage.LoginsStorage\n",
+        "Autofill login filter import",
+    )
+    s = replace_once(
+        s,
+        "    val applicationName: String,\n"
+        "    val httpClient: Client,",
+        "    val applicationName: String,\n"
+        "    val httpClient: Client,\n"
+        "    val loginFilter: (Login) -> Boolean = { true },",
+        "Autofill login filter configuration",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/android-components/components/feature/autofill/src/main/java/"
+        "mozilla/components/feature/autofill/handler/FillRequestHandler.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "            .getByBaseDomain(lookupDomain)\n"
+        "            .take(min(MAX_LOGINS, maxSuggestionCount))",
+        "            .getByBaseDomain(lookupDomain)\n"
+        "            .filter(configuration.loginFilter)\n"
+        "            .take(min(MAX_LOGINS, maxSuggestionCount))",
+        "Autofill origin results privacy filter",
+    )
+    s = replace_once(
+        s,
+        "        val logins = configuration.storage.getByBaseDomain(lookupDomain)\n",
+        "        val logins = configuration.storage.getByBaseDomain(lookupDomain)\n"
+        "            .filter(configuration.loginFilter)\n",
+        "Autofill confirmation privacy filter",
+    )
+    old = (
+        "        val logins = configuration.storage\n"
+        "            .getByBaseDomain(lookupDomain)\n"
+        "            .filter(configuration.loginFilter)\n"
+        "            .take(min(MAX_LOGINS, maxSuggestionCount))\n\n"
+        "        return if (!configuration.lock.keepUnlocked() && !forceUnlock) {\n"
+        "            AuthFillResponseBuilder(parsedStructure, maxSuggestionCount)\n"
+        "        } else {\n"
+        "            emitAutofillRequestFact(hasLogins = logins.isNotEmpty(), needsConfirmation)\n"
+        "            LoginFillResponseBuilder(parsedStructure, logins, needsConfirmation)\n"
+        "        }"
+    )
+    new = (
+        "        if (!configuration.lock.keepUnlocked() && !forceUnlock) {\n"
+        "            return AuthFillResponseBuilder(parsedStructure, maxSuggestionCount)\n"
+        "        }\n\n"
+        "        // Do not even read credential metadata until the fresh authentication succeeds.\n"
+        "        val logins = configuration.storage\n"
+        "            .getByBaseDomain(lookupDomain)\n"
+        "            .filter(configuration.loginFilter)\n"
+        "            .take(min(MAX_LOGINS, maxSuggestionCount))\n"
+        "        emitAutofillRequestFact(hasLogins = logins.isNotEmpty(), needsConfirmation)\n"
+        "        return LoginFillResponseBuilder(parsedStructure, logins, needsConfirmation)"
+    )
+    s = replace_once(s, old, new, "Autofill defer metadata lookup until authentication")
+    write(path, s)
+
+    path = target / (
+        "mobile/android/android-components/components/feature/autofill/src/test/java/"
+        "mozilla/components/feature/autofill/handler/FillRequestHandlerTest.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "    val builder = handler.handle(structure)\n",
+        "    val builder = handler.handle(structure, forceUnlock = true)\n",
+        "Autofill response tests authenticate explicitly",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/android-components/components/feature/autofill/src/main/java/"
+        "mozilla/components/feature/autofill/ui/AbstractAutofillSearchActivity.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "            configuration.storage.list()",
+        "            configuration.storage.list().filter(configuration.loginFilter)",
+        "Autofill global search privacy filter",
+    )
+    write(path, s)
+
+    path = target / "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/components/Components.kt"
+    s = read(path)
+    s = replace_once(
+        s,
+        "            storage = core.passwordsStorage,\n"
+        "            publicSuffixList = publicSuffixList,",
+        "            storage = core.passwordsStorage,\n"
+        "            loginFilter = { login -> !core.privateHistoryRules.shouldProtectLogin(login.origin) },\n"
+        "            publicSuffixList = publicSuffixList,",
+        "Fenix external autofill private-login filter",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/settings/logins/ui/"
+        "LoginsMiddleware.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "    private val clipboardManager: ClipboardManager?,\n"
+        ") : Middleware<LoginsState, LoginsAction> {",
+        "    private val clipboardManager: ClipboardManager?,\n"
+        "    private val isLoginVisible: (Login) -> Boolean = { true },\n"
+        ") : Middleware<LoginsState, LoginsAction> {",
+        "Saved login visibility predicate",
+    )
+    s = replace_once(
+        s,
+        "        loginsStorage.list().forEach { login ->\n"
+        "            loginItems.add(",
+        "        loginsStorage.list().filter(isLoginVisible).forEach { login ->\n"
+        "            loginItems.add(",
+        "Saved login private-tier filtering",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/settings/logins/fragment/"
+        "SavedLoginsFragment.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "            val navController = findNavController()\n\n"
+        "            val store by fragmentStore(",
+        "            val navController = findNavController()\n"
+        "            val privateHistoryRules = requireComponents.core.privateHistoryRules\n\n"
+        "            val store by fragmentStore(",
+        "Saved logins private rules capture",
+    )
+    s = replace_once(
+        s,
+        "                            clipboardManager = requireContext().getSystemService(),\n"
+        "                        ),",
+        "                            clipboardManager = requireContext().getSystemService(),\n"
+        "                            isLoginVisible = { login ->\n"
+        "                                !privateHistoryRules.shouldProtectLogin(login.origin)\n"
+        "                            },\n"
+        "                        ),",
+        "Saved logins ordinary-list privacy filter",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/settings/logins/ui/"
+        "BiometricAuthenticationHelper.kt"
+    )
+    s = read(path)
+    old = (
+        "    if (DefaultBiometricUtils.canUseBiometricAuthentication(activity = activity)) {\n"
+        "        ShowBiometricAuthenticationDialog(\n"
+        "            title = title,\n"
+        "            activity = activity,\n"
+        "            onAuthSuccess = onAuthSuccess,\n"
+        "            onAuthFailure = onAuthFailure,\n"
+        "        )\n"
+        "    } else if (DefaultBiometricUtils.canUsePinVerification(activity = activity)) {\n"
+        "        ShowPinVerificationDialog(\n"
+        "            title = title,\n"
+        "            activity = activity,\n"
+        "            onAuthSuccess = onAuthSuccess,\n"
+        "            onAuthFailure = onAuthFailure,\n"
+        "        )\n"
+        "    } else {\n"
+        "        ShowPinWarningDialog(\n"
+        "            activity = activity,\n"
+        "            onAuthSuccess = onAuthSuccess,\n"
+        "        )\n"
+        "    }"
+    )
+    new = (
+        "    if (DefaultBiometricUtils.canUseBiometricAuthentication(activity = activity)) {\n"
+        "        ShowBiometricAuthenticationDialog(\n"
+        "            title = title,\n"
+        "            activity = activity,\n"
+        "            onAuthSuccess = onAuthSuccess,\n"
+        "            onAuthFailure = onAuthFailure,\n"
+        "        )\n"
+        "    } else {\n"
+        "        // Fail closed: the phone's device PIN must not unlock Firefox secrets.\n"
+        "        onAuthFailure()\n"
+        "    }"
+    )
+    s = replace_once(s, old, new, "Saved logins remove device credential fallback")
+    write(path, s)
+
+    path = target / (
+        "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/settings/biometric/"
+        "BiometricPromptFeature.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK\n"
+        "import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL\n",
+        "import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG\n",
+        "Browser strong biometric imports",
+    )
+    s = replace_once(
+        s,
+        "import org.mozilla.fenix.settings.biometric.ext.isBiometricHardwareAvailable\n"
+        "import org.mozilla.fenix.settings.biometric.ext.isEnrolled\n",
+        "",
+        "Browser obsolete biometric helpers",
+    )
+    s = replace_once(
+        s,
+        ".setAllowedAuthenticators(BIOMETRIC_WEAK or DEVICE_CREDENTIAL)",
+        ".setAllowedAuthenticators(BIOMETRIC_STRONG)\n"
+        "            .setNegativeButtonText(context.getString(android.R.string.cancel))",
+        "Browser strong biometric prompt",
+    )
+    s = replace_once(
+        s,
+        "        override fun onAuthenticationFailed() {\n"
+        "            logger.error(\"onAuthenticationFailed\")\n"
+        "            onAuthFailure.invoke()\n"
+        "        }",
+        "        override fun onAuthenticationFailed() {\n"
+        "            // A non-matching scan is not terminal; Android keeps the prompt open.\n"
+        "            logger.error(\"onAuthenticationFailed\")\n"
+        "        }",
+        "Browser biometric non-terminal mismatch",
+    )
+    s = replace_once(
+        s,
+        "        fun canUseFeature(manager: BiometricManager): Boolean =\n"
+        "            manager.isBiometricHardwareAvailable() && manager.isEnrolled()",
+        "        fun canUseFeature(manager: BiometricManager): Boolean =\n"
+        "            manager.canAuthenticate(BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS",
+        "Browser strong biometric availability",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/android-components/components/feature/autofill/src/main/java/"
+        "mozilla/components/feature/autofill/authenticator/BiometricAuthenticator.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "private const val AUTHENTICATORS =\n"
+        "    BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL",
+        "private const val AUTHENTICATORS = BiometricManager.Authenticators.BIOMETRIC_STRONG",
+        "Android autofill strong biometric",
+    )
+    s = replace_once(
+        s,
+        "            .setAllowedAuthenticators(AUTHENTICATORS)\n"
+        "            .setTitle(",
+        "            .setAllowedAuthenticators(AUTHENTICATORS)\n"
+        "            .setNegativeButtonText(activity.getString(android.R.string.cancel))\n"
+        "            .setTitle(",
+        "Android autofill biometric cancel action",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/android-components/components/feature/autofill/src/main/java/"
+        "mozilla/components/feature/autofill/lock/AutofillLock.kt"
+    )
+    s = read(path)
+    old = (
+        "    fun keepUnlocked(): Boolean {\n"
+        "        return if (isUnlocked()) {\n"
+        "            unlock()\n"
+        "            true\n"
+        "        } else {\n"
+        "            false\n"
+        "        }\n"
+        "    }"
+    )
+    new = (
+        "    fun keepUnlocked(): Boolean {\n"
+        "        // Fenix Privacy requires a new biometric for every autofill request.\n"
+        "        return false\n"
+        "    }"
+    )
+    s = replace_once(s, old, new, "Android autofill immediate relock")
+    write(path, s)
+
+
+def patch_origin_bound_login_picker(target: Path) -> None:
+    """Render one neutral action and release only current-origin records after authentication."""
+    path = target / (
+        "mobile/android/android-components/components/feature/prompts/src/main/java/"
+        "mozilla/components/feature/prompts/concept/SelectablePromptView.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "        fun onOptionSelect(option: T)\n\n"
+        "        /**\n"
+        "         * Called when the user invokes the option to manage the list of options.",
+        "        fun onOptionSelect(option: T)\n\n"
+        "        /**\n"
+        "         * Called when the user deliberately long-presses an option. Existing prompts\n"
+        "         * retain normal click behaviour unless they opt into a distinct private path.\n"
+        "         */\n"
+        "        fun onOptionLongSelect(option: T) = onOptionSelect(option)\n\n"
+        "        /**\n"
+        "         * Called when the user invokes the option to manage the list of options.",
+        "Selectable prompt deliberate long press",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/android-components/components/feature/prompts/src/main/java/"
+        "mozilla/components/feature/prompts/login/LoginPickerView.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "import androidx.compose.foundation.clickable\n",
+        "import androidx.compose.foundation.clickable\n"
+        "import androidx.compose.foundation.combinedClickable\n",
+        "Login picker long-press import",
+    )
+    s = replace_once(
+        s,
+        "    onListItemClicked: () -> Unit,\n"
+        ") {",
+        "    onListItemClicked: () -> Unit,\n"
+        "    onListItemLongClicked: () -> Unit,\n"
+        ") {",
+        "Login picker item long-press callback",
+    )
+    s = replace_once(
+        s,
+        "            .padding(start = 64.dp, top = 8.dp, end = 8.dp, bottom = 8.dp)\n"
+        "            .clickable { onListItemClicked() },",
+        "            .padding(start = 64.dp, top = 8.dp, end = 8.dp, bottom = 8.dp)\n"
+        "            .combinedClickable(\n"
+        "                onClick = onListItemClicked,\n"
+        "                onLongClick = onListItemLongClicked,\n"
+        "            ),",
+        "Login picker item deliberate long press",
+    )
+    s = replace_once(
+        s,
+        "    onLoginSelected: (Login) -> Unit,\n"
+        "    onManagePasswordClicked: () -> Unit,",
+        "    onLoginSelected: (Login) -> Unit,\n"
+        "    onLoginLongSelected: (Login) -> Unit = onLoginSelected,\n"
+        "    onManagePasswordClicked: () -> Unit,",
+        "Login picker long-selection parameter",
+    )
+    s = replace_once(
+        s,
+        "                        onListItemClicked = { onLoginSelected(login) },\n"
+        "                    )",
+        "                        onListItemClicked = { onLoginSelected(login) },\n"
+        "                        onListItemLongClicked = { onLoginLongSelected(login) },\n"
+        "                    )",
+        "Login picker long-selection wiring",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/android-components/components/feature/prompts/src/main/java/"
+        "mozilla/components/feature/prompts/login/LoginSelectBar.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "                onLoginSelected = { selectablePromptListener?.onOptionSelect(it) },\n"
+        "                onManagePasswordClicked = { selectablePromptListener?.onManageOptions() },",
+        "                onLoginSelected = { selectablePromptListener?.onOptionSelect(it) },\n"
+        "                onLoginLongSelected = { selectablePromptListener?.onOptionLongSelect(it) },\n"
+        "                onManagePasswordClicked = { selectablePromptListener?.onManageOptions() },",
+        "Login select bar private gesture wiring",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/android-components/components/feature/prompts/src/main/java/"
+        "mozilla/components/feature/prompts/login/LoginDelegate.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "    val onManageLogins: () -> Unit\n"
+        "        get() = {}\n",
+        "    val onManageLogins: () -> Unit\n"
+        "        get() = {}\n\n"
+        "    /** Whether [login] is the transient metadata-free authentication action. */\n"
+        "    val isLockedLogin: (login: Login) -> Boolean\n"
+        "        get() = { false }\n\n"
+        "    /** Neutral text rendered instead of a saved origin or username. */\n"
+        "    val lockedLoginLabel: String\n"
+        "        get() = \"\"\n\n"
+        "    /** Starts a fresh strong biometric without revealing whether a login exists. */\n"
+        "    val onUnlockLogins: () -> Unit\n"
+        "        get() = {}\n\n"
+        "    /** Fetches only current-origin standard or private records after authentication. */\n"
+        "    val fetchUnlockedLogins: (\n"
+        "        origin: String,\n"
+        "        privateAccess: Boolean,\n"
+        "        onResult: (List<Login>) -> Unit,\n"
+        "    ) -> Unit\n"
+        "        get() = { _, _, onResult -> onResult(emptyList()) }\n",
+        "Login delegate origin-bound unlock callbacks",
+    )
+    write(path, s)
+
+    path = target / (
+        "mobile/android/android-components/components/feature/prompts/src/main/java/"
+        "mozilla/components/feature/prompts/login/LoginPicker.kt"
+    )
+    s = read(path)
+    old = (
+        "internal class LoginPicker(\n"
+        "    private val store: BrowserStore,\n"
+        "    private val loginSelectBar: AutocompletePrompt<Login>,\n"
+        "    private val manageLoginsCallback: () -> Unit = {},\n"
+        "    private var sessionId: String? = null,\n"
+        ") : SelectablePromptView.Listener<Login> {\n\n"
+        "    init {\n"
+        "        loginSelectBar.selectablePromptListener = this\n"
+        "    }\n\n"
+        "    internal fun handleSelectLoginRequest(request: PromptRequest.SelectLoginPrompt) {\n"
+        "        emitLoginAutofillShownFact()\n"
+        "        loginSelectBar.showPrompt()\n"
+        "        loginSelectBar.populate(request.logins)\n"
+        "    }\n\n"
+        "    override fun onOptionSelect(option: Login) {\n"
+        "        store.consumePromptFrom<PromptRequest.SelectLoginPrompt>(sessionId) {\n"
+        "            it.onConfirm(option)\n"
+        "        }\n"
+        "        emitLoginAutofillPerformedFact()\n"
+        "        loginSelectBar.hidePrompt()\n"
+        "    }\n\n"
+        "    override fun onManageOptions() {\n"
+        "        manageLoginsCallback.invoke()\n"
+        "        dismissCurrentLoginSelect()\n"
+        "    }\n\n"
+        "    @Suppress(\"TooGenericExceptionCaught\")\n"
+        "    fun dismissCurrentLoginSelect(promptRequest: PromptRequest.SelectLoginPrompt? = null) {\n"
+        "        try {\n"
+        "            if (promptRequest != null) {\n"
+        "                promptRequest.onDismiss()\n"
+        "                sessionId?.let {\n"
+        "                    store.dispatch(ContentAction.ConsumePromptRequestAction(it, promptRequest))\n"
+        "                }\n"
+        "                loginSelectBar.hidePrompt()\n"
+        "                return\n"
+        "            }\n\n"
+        "            store.consumePromptFrom<PromptRequest.SelectLoginPrompt>(sessionId) {\n"
+        "                it.onDismiss()\n"
+        "            }\n"
+        "        } catch (e: RuntimeException) {\n"
+        "            Logger.error(\"Can't dismiss this login select prompt\", e)\n"
+        "        }\n"
+        "        emitLoginAutofillDismissedFact()\n"
+        "        loginSelectBar.hidePrompt()\n"
+        "    }\n"
+        "}"
+    )
+    new = (
+        "internal class LoginPicker(\n"
+        "    private val store: BrowserStore,\n"
+        "    private val loginSelectBar: AutocompletePrompt<Login>,\n"
+        "    private val manageLoginsCallback: () -> Unit = {},\n"
+        "    private var sessionId: String? = null,\n"
+        "    private val isLockedLogin: (Login) -> Boolean = { false },\n"
+        "    private val lockedLoginLabel: String = \"\",\n"
+        "    private val requestUnlock: () -> Unit = {},\n"
+        "    private val fetchUnlockedLogins: (String, Boolean, (List<Login>) -> Unit) -> Unit =\n"
+        "        { _, _, onResult -> onResult(emptyList()) },\n"
+        ") : SelectablePromptView.Listener<Login> {\n"
+        "    private var pendingOrigin: String? = null\n"
+        "    private var pendingPrivateAccess = false\n\n"
+        "    init {\n"
+        "        loginSelectBar.selectablePromptListener = this\n"
+        "    }\n\n"
+        "    internal fun handleSelectLoginRequest(request: PromptRequest.SelectLoginPrompt) {\n"
+        "        emitLoginAutofillShownFact()\n"
+        "        loginSelectBar.showPrompt()\n"
+        "        val locked = request.logins.firstOrNull(isLockedLogin)\n"
+        "        if (locked == null) {\n"
+        "            loginSelectBar.populate(request.logins)\n"
+        "        } else {\n"
+        "            loginSelectBar.populate(\n"
+        "                listOf(\n"
+        "                    locked.copy(\n"
+        "                        origin = lockedLoginLabel.ifBlank { \"Passwords\" },\n"
+        "                        username = \"\",\n"
+        "                        password = \"\",\n"
+        "                    ),\n"
+        "                ),\n"
+        "            )\n"
+        "        }\n"
+        "    }\n\n"
+        "    override fun onOptionSelect(option: Login) {\n"
+        "        if (isLockedLogin(option)) {\n"
+        "            beginUnlock(option, privateAccess = false)\n"
+        "        } else {\n"
+        "            confirm(option)\n"
+        "        }\n"
+        "    }\n\n"
+        "    override fun onOptionLongSelect(option: Login) {\n"
+        "        if (isLockedLogin(option)) {\n"
+        "            beginUnlock(option, privateAccess = true)\n"
+        "        } else {\n"
+        "            confirm(option)\n"
+        "        }\n"
+        "    }\n\n"
+        "    private fun beginUnlock(option: Login, privateAccess: Boolean) {\n"
+        "        pendingOrigin = option.formActionOrigin?.takeIf(String::isNotBlank) ?: option.origin\n"
+        "        pendingPrivateAccess = privateAccess\n"
+        "        requestUnlock()\n"
+        "    }\n\n"
+        "    /** Returns true when the biometric result belonged to the login gate. */\n"
+        "    internal fun onBiometricResult(isAuthenticated: Boolean): Boolean {\n"
+        "        val origin = pendingOrigin ?: return false\n"
+        "        if (!isAuthenticated) {\n"
+        "            pendingOrigin = null\n"
+        "            pendingPrivateAccess = false\n"
+        "            return true\n"
+        "        }\n"
+        "        val privateAccess = pendingPrivateAccess\n"
+        "        fetchUnlockedLogins(origin, privateAccess) { logins ->\n"
+        "            if (pendingOrigin != origin) return@fetchUnlockedLogins\n"
+        "            pendingOrigin = null\n"
+        "            pendingPrivateAccess = false\n"
+        "            when (logins.size) {\n"
+        "                0 -> dismissCurrentLoginSelect()\n"
+        "                1 -> confirm(logins.single())\n"
+        "                else -> loginSelectBar.populate(logins)\n"
+        "            }\n"
+        "        }\n"
+        "        return true\n"
+        "    }\n\n"
+        "    private fun confirm(option: Login) {\n"
+        "        store.consumePromptFrom<PromptRequest.SelectLoginPrompt>(sessionId) {\n"
+        "            it.onConfirm(option)\n"
+        "        }\n"
+        "        pendingOrigin = null\n"
+        "        pendingPrivateAccess = false\n"
+        "        emitLoginAutofillPerformedFact()\n"
+        "        loginSelectBar.hidePrompt()\n"
+        "    }\n\n"
+        "    override fun onManageOptions() {\n"
+        "        manageLoginsCallback.invoke()\n"
+        "        dismissCurrentLoginSelect()\n"
+        "    }\n\n"
+        "    @Suppress(\"TooGenericExceptionCaught\")\n"
+        "    fun dismissCurrentLoginSelect(promptRequest: PromptRequest.SelectLoginPrompt? = null) {\n"
+        "        pendingOrigin = null\n"
+        "        pendingPrivateAccess = false\n"
+        "        try {\n"
+        "            if (promptRequest != null) {\n"
+        "                promptRequest.onDismiss()\n"
+        "                sessionId?.let {\n"
+        "                    store.dispatch(ContentAction.ConsumePromptRequestAction(it, promptRequest))\n"
+        "                }\n"
+        "                loginSelectBar.hidePrompt()\n"
+        "                return\n"
+        "            }\n\n"
+        "            store.consumePromptFrom<PromptRequest.SelectLoginPrompt>(sessionId) {\n"
+        "                it.onDismiss()\n"
+        "            }\n"
+        "        } catch (e: RuntimeException) {\n"
+        "            Logger.error(\"Can't dismiss this login select prompt\", e)\n"
+        "        }\n"
+        "        emitLoginAutofillDismissedFact()\n"
+        "        loginSelectBar.hidePrompt()\n"
+        "    }\n"
+        "}"
+    )
+    s = replace_once(s, old, new, "Origin-bound login picker implementation")
+    write(path, s)
+
+    path = target / (
+        "mobile/android/android-components/components/feature/prompts/src/main/java/"
+        "mozilla/components/feature/prompts/PromptFeature.kt"
+    )
+    s = read(path)
+    s = replace_once(
+        s,
+        "                LoginPicker(store, it, onManageLogins, customTabId)",
+        "                LoginPicker(\n"
+        "                    store = store,\n"
+        "                    loginSelectBar = it,\n"
+        "                    manageLoginsCallback = onManageLogins,\n"
+        "                    sessionId = customTabId,\n"
+        "                    isLockedLogin = isLockedLogin,\n"
+        "                    lockedLoginLabel = lockedLoginLabel,\n"
+        "                    requestUnlock = onUnlockLogins,\n"
+        "                    fetchUnlockedLogins = fetchUnlockedLogins,\n"
+        "                )",
+        "Prompt feature origin-bound login picker",
+    )
+    s = replace_once(
+        s,
+        "    fun onBiometricResult(isAuthenticated: Boolean) {\n"
+        "        if (isAuthenticated) {",
+        "    fun onBiometricResult(isAuthenticated: Boolean) {\n"
+        "        if (loginPicker?.onBiometricResult(isAuthenticated) == true) return\n\n"
+        "        if (isAuthenticated) {",
+        "Prompt feature login biometric result",
+    )
+    write(path, s)
+
+    path = target / "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/browser/BaseBrowserFragment.kt"
+    s = read(path)
+    anchor = "import org.mozilla.fenix.ReaderViewBinding\n"
+    s = replace_once(
+        s,
+        anchor,
+        anchor + "import org.mozilla.fenix.privacyhistory.PrivatePasswordAccess\n",
+        "Browser private password access import",
+    )
+    old = (
+        "                loginDelegate = object : LoginDelegate {\n"
+        "                    override val loginPickerView\n"
+        "                        get() = loginSelectBar\n"
+        "                    override val onManageLogins = {\n"
+        "                        val directions =\n"
+        "                            NavGraphDirections.actionGlobalSavedLoginsAuthFragment()\n"
+        "                        findNavController().navigate(directions)\n"
+        "                    }\n"
+        "                },"
+    )
+    new = (
+        "                loginDelegate = object : LoginDelegate {\n"
+        "                    override val loginPickerView\n"
+        "                        get() = loginSelectBar\n"
+        "                    override val onManageLogins = {\n"
+        "                        val directions =\n"
+        "                            NavGraphDirections.actionGlobalSavedLoginsAuthFragment()\n"
+        "                        findNavController().navigate(directions)\n"
+        "                    }\n"
+        "                    override val isLockedLogin = PrivatePasswordAccess::isLockedLogin\n"
+        "                    override val lockedLoginLabel\n"
+        "                        get() = getString(R.string.private_password_unlock_label)\n"
+        "                    override val onUnlockLogins = {\n"
+        "                        biometricPromptFeature.get()?.requestAuthentication(\n"
+        "                            getString(R.string.private_password_auth_title),\n"
+        "                        ) ?: promptsFeature.get()?.onBiometricResult(isAuthenticated = false)\n"
+        "                    }\n"
+        "                    override val fetchUnlockedLogins =\n"
+        "                        { origin: String, privateAccess: Boolean, onResult: (List<Login>) -> Unit ->\n"
+        "                            viewLifecycleOwner.lifecycleScope.launch {\n"
+        "                                val logins = withContext(Dispatchers.IO) {\n"
+        "                                    context.components.core.passwordsStorage\n"
+        "                                        .getByBaseDomain(origin)\n"
+        "                                        .filter { login ->\n"
+        "                                            context.components.core.privateHistoryRules\n"
+        "                                                .shouldProtectLogin(login.origin) == privateAccess\n"
+        "                                        }\n"
+        "                                }\n"
+        "                                onResult(logins)\n"
+        "                            }\n"
+        "                        }\n"
+        "                },"
+    )
+    s = replace_once(s, old, new, "Fenix current-origin login unlock")
+    write(path, s)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("target", type=Path, help="Path to Firefox source checkout")
@@ -467,6 +1281,9 @@ def main() -> None:
     patch_application(target)
     patch_manifest(target)
     patch_gradle(target)
+    patch_strong_authentication(target)
+    patch_login_data_gate(target)
+    patch_origin_bound_login_picker(target)
     print("Fenix Privacy patch applied successfully")
 
 

@@ -99,6 +99,7 @@
     <string name="private_history_builder_clear_cache">Also clear this site’s cache</string>
     <string name="private_history_builder_clear_downloads">Also clear the download list (files stay on disk)</string>
     <string name="private_history_builder_close_tab">Do not restore tabs matching this rule at the next app start</string>
+    <string name="private_history_builder_protect_login">Protect matching saved passwords (private gesture and fresh biometric; hidden from the ordinary password list)</string>
     <string name="private_history_builder_save">Save rule</string>
     <string name="private_history_builder_value_required">Enter a value to match</string>
 
@@ -138,10 +139,10 @@
     <string name="private_history_quick_saved">Privacy rule saved</string>
 
     <string name="private_history_security_category">Security and encrypted transfer</string>
-    <string name="private_history_auth_switch_title">Lock rules with biometric/PIN</string>
-    <string name="private_history_auth_switch_summary">Protect this settings screen with the device lock. No biometric data is stored by Fenix Privacy.</string>
     <string name="private_history_auth_title">Unlock Privacy Studio</string>
-    <string name="private_history_auth_subtitle">Use your biometric or device PIN to view private rules</string>
+    <string name="private_history_auth_subtitle">Use a fresh strong biometric to view protected settings</string>
+    <string name="private_password_unlock_label">Unlock saved passwords</string>
+    <string name="private_password_auth_title">Unlock for this site</string>
     <string name="private_history_backup_export_title">Export encrypted rules</string>
     <string name="private_history_backup_export_summary">Create a password-encrypted cross-platform sync bundle; history and counters are excluded</string>
     <string name="private_history_backup_import_title">Import encrypted rules</string>

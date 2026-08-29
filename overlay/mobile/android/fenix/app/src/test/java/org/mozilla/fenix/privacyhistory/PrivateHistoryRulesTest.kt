@@ -197,6 +197,45 @@ class PrivateHistoryRulesTest {
     }
 
     @Test
+    fun `protected login flag follows only matching active visual rules`() {
+        putString(PrivateHistoryRules.KEY_DOMAINS, "legacy.example")
+        putVisualRules(
+            PrivateHistoryRule(
+                name = "Private account",
+                matcher = PrivateHistoryRule.Matcher.DOMAIN,
+                value = "private.example",
+                protectLogin = true,
+            ),
+            PrivateHistoryRule(
+                name = "History only",
+                matcher = PrivateHistoryRule.Matcher.DOMAIN,
+                value = "history-only.example",
+            ),
+        )
+        val rules = PrivateHistoryRules(testContext)
+
+        assertTrue(rules.shouldProtectLogin("https://login.private.example/account"))
+        assertFalse(rules.shouldProtectLogin("https://history-only.example/account"))
+        assertFalse(rules.shouldProtectLogin("https://legacy.example/account"))
+    }
+
+    @Test
+    fun `protected login flag survives the portable rule codec`() {
+        val encoded = PrivateHistoryRule.encode(
+            listOf(
+                PrivateHistoryRule(
+                    name = "Private account",
+                    matcher = PrivateHistoryRule.Matcher.DOMAIN,
+                    value = "private.example",
+                    protectLogin = true,
+                ),
+            ),
+        )
+
+        assertTrue(PrivateHistoryRule.decode(encoded).single().protectLogin)
+    }
+
+    @Test
     fun `collapse rule returns canonical site root`() {
         putVisualRules(
             PrivateHistoryRule(

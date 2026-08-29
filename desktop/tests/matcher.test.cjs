@@ -15,6 +15,7 @@ const requiredOptionIds = [
   "metricTotal", "metricWeek", "openAddons", "previewClean", "pullEncryptedSync",
   "pushEncryptedSync", "queryParameterRow", "regex", "resetCounter", "ruleAction",
   "ruleClearCache", "ruleClearCookies", "ruleClearDownloads", "ruleCloseTab", "ruleExpiry",
+  "ruleProtectLogin",
   "ruleMatcher", "ruleName", "ruleProfile", "ruleQueryParameter", "ruleRetentionHours", "ruleValue", "save",
   "scrubEveryMinutes", "scrubOnStartup", "selfTest", "selfTestResult", "status", "syncRules",
   "temporaryStatus", "test", "testResult", "testTitle", "testUrl", "updateCenter", "showQr",

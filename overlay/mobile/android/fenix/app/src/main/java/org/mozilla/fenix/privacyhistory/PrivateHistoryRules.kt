@@ -115,6 +115,21 @@ class PrivateHistoryRules(
         return rules.any { rule -> rule.closeTab && matchesRule(rule, uri, title, searchTerm) }
     }
 
+    /**
+     * Returns whether a saved login for [uri] belongs to the private credential tier.
+     *
+     * This flag is deliberately evaluated only from active visual rules. Legacy text lists keep
+     * their original history-only meaning, so upgrading can never hide a password unexpectedly.
+     */
+    fun shouldProtectLogin(uri: String): Boolean {
+        if (uri.isBlank()) return false
+        return visualRules()
+            .asSequence()
+            .filter(::isRuleActive)
+            .filter { it.protectLogin }
+            .any { matchesRule(it, uri, null, null) }
+    }
+
     fun blockedDomains(): Set<String> = parseLines(prefs.getString(KEY_DOMAINS, "").orEmpty())
         .mapNotNull(::normalizeDomain)
         .toSet()

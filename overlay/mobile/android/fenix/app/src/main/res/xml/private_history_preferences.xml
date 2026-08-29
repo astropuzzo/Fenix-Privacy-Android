@@ -154,13 +154,6 @@
         android:title="@string/private_history_security_category"
         android:layout="@layout/preference_category_no_icon_style">
 
-        <androidx.preference.SwitchPreferenceCompat
-            android:key="private_history_biometric_lock"
-            android:defaultValue="false"
-            android:title="@string/private_history_auth_switch_title"
-            android:summary="@string/private_history_auth_switch_summary"
-            app:iconSpaceReserved="false" />
-
         <androidx.preference.Preference
             android:key="private_history_backup_export"
             android:title="@string/private_history_backup_export_title"
