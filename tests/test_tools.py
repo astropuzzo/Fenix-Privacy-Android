@@ -1,4 +1,6 @@
 import importlib.util
+import json
+import re
 import subprocess
 import tempfile
 import unittest
@@ -51,6 +53,56 @@ class ToolingTests(unittest.TestCase):
             if path.is_file() and path.suffix.lower() in forbidden
         ]
         self.assertEqual(found, [])
+
+    def test_shared_rule_schema_matches_android_desktop_and_fixtures(self):
+        schema = json.loads((ROOT / "shared/privacy-rule-schema.json").read_text(encoding="utf-8"))
+        fixtures = json.loads((ROOT / "shared/rule-fixtures.json").read_text(encoding="utf-8"))
+        actions = set(schema["properties"]["action"]["enum"])
+        matchers = set(schema["properties"]["matcher"]["enum"])
+
+        kotlin = (
+            ROOT
+            / "overlay/mobile/android/fenix/app/src/main/java/org/mozilla/fenix/"
+            / "privacyhistory/PrivateHistoryRule.kt"
+        ).read_text(encoding="utf-8")
+        kotlin_actions = self._kotlin_enum(kotlin, "Action")
+        kotlin_matchers = self._kotlin_enum(kotlin, "Matcher")
+        self.assertEqual(kotlin_actions, actions)
+        self.assertEqual(kotlin_matchers, matchers)
+
+        desktop = (ROOT / "desktop/firefox-extension/background.js").read_text(encoding="utf-8")
+        action_block = re.search(r"const ACTION = Object\.freeze\(\{(.*?)\}\);", desktop, re.S)
+        matcher_block = re.search(r"const MATCHER = Object\.freeze\(\{(.*?)\}\);", desktop, re.S)
+        self.assertIsNotNone(action_block)
+        self.assertIsNotNone(matcher_block)
+        desktop_actions = set(re.findall(r':\s*"([A-Z_]+)"', action_block.group(1)))
+        desktop_matchers = set(re.findall(r':\s*"([A-Z_]+)"', matcher_block.group(1)))
+        self.assertEqual(desktop_actions, actions)
+        self.assertEqual(desktop_matchers, matchers)
+
+        required = set(schema["required"])
+        self.assertTrue(fixtures["cases"])
+        for case in fixtures["cases"]:
+            with self.subTest(case=case["name"]):
+                self.assertIn(case["expectedAction"], actions)
+                self.assertTrue(case["url"].endswith(".test/") or ".test/" in case["url"])
+                for rule in case["rules"]:
+                    self.assertFalse(required - set(rule))
+                    self.assertIn(rule["action"], actions)
+                    self.assertIn(rule["matcher"], matchers)
+                    if rule["action"] == "FORGET_AFTER":
+                        self.assertGreaterEqual(rule.get("retentionMillis", 0), 60_000)
+
+    @staticmethod
+    def _kotlin_enum(source: str, name: str) -> set[str]:
+        match = re.search(rf"enum class {name} \{{(.*?)\n    \}}", source, re.S)
+        if match is None:
+            raise AssertionError(f"Missing Kotlin enum {name}")
+        return {
+            line.strip().rstrip(",")
+            for line in match.group(1).splitlines()
+            if line.strip()
+        }
 
     def test_history_metadata_patch_accepts_stable_constructor(self):
         module = load_module(
@@ -156,6 +208,48 @@ class ToolingTests(unittest.TestCase):
             self.assertIn("privateHistoryStats.recordRemovedAfterMatch(url)", patched)
             self.assertIn("privateHistoryPurger.purgeAsync(url)", patched)
 
+    def test_toolbar_patch_adds_a_button_without_omnibox_commands(self):
+        module = load_module(
+            "fenix_privacy_patcher_toolbar",
+            ROOT / "scripts/apply_fenix_privacy.py",
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            path = target / (
+                "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/"
+                "components/toolbar/BrowserToolbarMiddleware.kt"
+            )
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                "import org.mozilla.fenix.settings.ShortcutType\n"
+                "    data class ReaderModeClicked(\n"
+                "        val isActive: Boolean,\n"
+                "    ) : PageEndActionsInteractions(Source.AddressBar.PageEnd)\n"
+                "}\n\ninternal object BrowserToolbarTestTags\n"
+                "            is ReaderModeClicked -> {\n"
+                "        return listOf(\n"
+                "            ToolbarActionConfig(ToolbarAction.ReaderMode) {\n"
+                "            distinctUntilChangedBy { it.selectedTab?.content?.url }\n"
+                "            .collect {\n"
+                "                updateCurrentPageOrigin(store)\n"
+                "            distinctUntilChangedBy { it.tabs.size }\n"
+                "            .collect {\n"
+                "                updateEndBrowserActions(store)\n"
+                "        Menu,\n"
+                "        ReaderMode,\n"
+                "        ToolbarAction.ReaderMode -> ActionButtonRes(\n",
+                encoding="utf-8",
+            )
+
+            module.patch_toolbar(target)
+
+            patched = path.read_text(encoding="utf-8")
+            self.assertIn("ToolbarAction.PrivacyShield", patched)
+            self.assertIn("PrivateHistoryToolbarController", patched)
+            self.assertIn("PrivateHistoryTabProtection.onNavigation", patched)
+            self.assertIn("state.tabs.forEach", patched)
+            self.assertNotRegex(patched, r"(?i)\\bfp(?:\\s|:)")
+
     def test_destructive_site_actions_are_explicit_and_opt_in(self):
         source_dir = (
             ROOT
@@ -173,11 +267,15 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("rules.shouldCloseTab", source)
         action_source = (source_dir / "PrivateHistoryActionExecutor.kt").read_text(encoding="utf-8")
         worker_source = (source_dir / "PrivateHistoryMaintenanceWorker.kt").read_text(encoding="utf-8")
+        tab_source = (source_dir / "PrivateHistoryTabProtection.kt").read_text(encoding="utf-8")
         self.assertNotIn("if (rule.closeTab)", action_source)
+        self.assertIn(".filter { it.restored }", action_source)
         self.assertIn("if (!rule.clearCookies && !rule.clearCache && !rule.clearDownloads) return", action_source)
         self.assertIn("closeRestoredMatchingTabs()", action_source)
         self.assertIn("inputData.getBoolean(KEY_CLOSE_RESTORED_TABS, false)", worker_source)
         self.assertIn("workDataOf(KEY_CLOSE_RESTORED_TABS to true)", worker_source)
+        self.assertIn("oneShots.containsKey(tabId)", tab_source)
+        self.assertNotIn("tabId in oneShots", tab_source)
         self.assertIn("Cookies and logins stay saved", (ROOT / "README.md").read_text(encoding="utf-8"))
 
     def test_public_android_release_confirmation_uses_release_date(self):

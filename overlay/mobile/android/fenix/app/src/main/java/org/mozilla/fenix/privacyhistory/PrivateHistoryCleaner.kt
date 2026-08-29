@@ -25,9 +25,14 @@ class PrivateHistoryCleaner(
         val collapsedUri: String?,
     )
 
-    suspend fun previewMatchingHistory(): Preview {
+    private data class Candidate(
+        val decision: PrivateHistoryDecision,
+        val lastVisitAt: Long,
+    )
+
+    suspend fun previewMatchingHistory(includeRestartRules: Boolean = true): Preview {
         if (!rules.enabled) return Preview(scanned = 0, matching = 0, collapsedToRoot = 0)
-        val (scanned, plan) = buildPlan()
+        val (scanned, plan) = buildPlan(includeRestartRules)
         return Preview(
             scanned = scanned,
             matching = plan.size,
@@ -35,9 +40,9 @@ class PrivateHistoryCleaner(
         )
     }
 
-    suspend fun purgeMatchingHistory(): Int {
+    suspend fun purgeMatchingHistory(includeRestartRules: Boolean = false): Int {
         if (!rules.enabled) return 0
-        val (_, plan) = buildPlan()
+        val (_, plan) = buildPlan(includeRestartRules)
         val roots = linkedSetOf<String>()
 
         plan.forEach { item ->
@@ -56,25 +61,36 @@ class PrivateHistoryCleaner(
         return plan.size
     }
 
-    private suspend fun buildPlan(): Pair<Int, List<PlannedRemoval>> {
+    private suspend fun buildPlan(includeRestartRules: Boolean): Pair<Int, List<PlannedRemoval>> {
         val visits = historyStorage.getDetailedVisits(start = 0L, end = Long.MAX_VALUE)
         val metadata = historyStorage.getHistoryMetadataSince(0L)
-        val decisions = linkedMapOf<String, PrivateHistoryDecision>()
+        val candidates = linkedMapOf<String, Candidate>()
 
         visits.forEach { visit ->
-            val decision = rules.decide(visit.url, visit.title)
-            if (decision.suppressesOriginal) decisions[visit.url] = decision
+            addCandidate(
+                candidates,
+                visit.url,
+                rules.decide(visit.url, visit.title, includeTransientProtection = false),
+                visit.visitTime,
+            )
         }
         metadata.forEach { record ->
-            val decision = rules.decide(
-                uri = record.key.url,
-                title = record.title,
-                searchTerm = record.key.searchTerm,
+            addCandidate(
+                candidates = candidates,
+                url = record.key.url,
+                decision = rules.decide(
+                    uri = record.key.url,
+                    title = record.title,
+                    searchTerm = record.key.searchTerm,
+                    includeTransientProtection = false,
+                ),
+                visitedAt = record.updatedAt,
             )
-            if (decision.suppressesOriginal) decisions[record.key.url] = decision
         }
 
-        val plan = decisions.map { (url, decision) ->
+        val plan = candidates.mapNotNull { (url, candidate) ->
+            val (decision, lastVisitAt) = candidate
+            if (!rules.shouldRemoveStoredVisit(decision, lastVisitAt, includeRestartRules)) return@mapNotNull null
             PlannedRemoval(
                 url = url,
                 collapsedUri = decision.collapsedUri
@@ -82,5 +98,27 @@ class PrivateHistoryCleaner(
             )
         }
         return (visits.size + metadata.size) to plan
+    }
+
+    private fun addCandidate(
+        candidates: MutableMap<String, Candidate>,
+        url: String,
+        decision: PrivateHistoryDecision,
+        visitedAt: Long,
+    ) {
+        val previous = candidates[url]
+        candidates[url] = Candidate(
+            decision = listOfNotNull(previous?.decision, decision).maxBy(::decisionPriority),
+            lastVisitAt = maxOf(visitedAt, previous?.lastVisitAt ?: 0L),
+        )
+    }
+
+    private fun decisionPriority(decision: PrivateHistoryDecision): Int = when {
+        decision.action == PrivateHistoryRule.Action.ALLOW && decision.matchedRule != null -> 100
+        decision.action == PrivateHistoryRule.Action.BLOCK -> 80
+        decision.action == PrivateHistoryRule.Action.COLLAPSE_TO_ROOT -> 70
+        decision.action == PrivateHistoryRule.Action.FORGET_ON_RESTART -> 60
+        decision.action == PrivateHistoryRule.Action.FORGET_AFTER -> 50
+        else -> 0
     }
 }

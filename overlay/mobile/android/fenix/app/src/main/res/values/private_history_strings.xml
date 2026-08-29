@@ -91,6 +91,7 @@
     <string name="private_history_builder_value">Domain, URL, path, word, or expression</string>
     <string name="private_history_builder_query_parameter">Query parameter name (optional)</string>
     <string name="private_history_builder_action">History action</string>
+    <string name="private_history_builder_retention">Forget after hours</string>
     <string name="private_history_builder_expiry">Expires after minutes (blank = never)</string>
     <string name="private_history_builder_enabled">Rule enabled</string>
     <string name="private_history_builder_optional_actions">Explicit optional actions — cookies remain off by default</string>
@@ -109,6 +110,23 @@
     <string name="private_history_tester_allowed">✅ Saved normally. Cookies and login remain available.</string>
     <string name="private_history_tester_blocked">🛡️ Blocked from history. Cookies and login remain available unless the rule explicitly says otherwise.</string>
     <string name="private_history_tester_collapsed">🏠 The specific page is hidden; history records only %1$s</string>
+    <string name="private_history_tester_temporary">⏱ Saved temporarily, then removed after the configured duration.</string>
+    <string name="private_history_tester_restart">⏻ Saved during this run, then removed at the next app start.</string>
+
+    <string name="private_history_toolbar_description">Fenix Privacy shield</string>
+    <string name="private_history_toolbar_title">Shield · %1$s</string>
+    <string name="private_history_toolbar_status_allow">Saved normally · no matching rule</string>
+    <string name="private_history_toolbar_status_block">This page is not saved to history</string>
+    <string name="private_history_toolbar_status_collapse">Only the site homepage is retained</string>
+    <string name="private_history_toolbar_status_temporary">Saved temporarily, then forgotten</string>
+    <string name="private_history_toolbar_status_restart">Forgotten at the next app start</string>
+    <string name="private_history_toolbar_status_tab">This tab and tabs opened from it are shielded</string>
+    <string name="private_history_toolbar_rule_name">Shield %1$s</string>
+    <string name="private_history_toolbar_rule_saved">Rule saved and active</string>
+    <string name="private_history_toolbar_tab_enabled">Tab and child-tab shield enabled</string>
+    <string name="private_history_toolbar_tab_disabled">Tab shield disabled</string>
+    <string name="private_history_toolbar_next_armed">The next page in this tab will not be saved</string>
+    <string name="private_history_toolbar_temporary_enabled">All history shielded for 15 minutes</string>
 
     <string name="private_history_temporary_title">Temporary protection</string>
     <string name="private_history_temporary_off">Off — normal selective rules are active</string>
@@ -133,6 +151,13 @@
     <string name="private_history_backup_exported">Encrypted rule bundle saved</string>
     <string name="private_history_backup_imported">Imported %1$d visual rules</string>
     <string name="private_history_backup_failed">Could not decrypt or save the rule bundle</string>
+    <string name="private_history_backup_qr_export_title">Show encrypted rule QR</string>
+    <string name="private_history_backup_qr_export_summary">Transfer rules locally; the passphrase is never encoded</string>
+    <string name="private_history_backup_qr_import_title">Scan encrypted rule QR</string>
+    <string name="private_history_backup_qr_import_summary">Import a QR created by Firefox Desktop or Fenix Privacy Android</string>
+    <string name="private_history_backup_qr_ready">Scan this locally. The QR contains encrypted rules only.</string>
+    <string name="private_history_backup_qr_too_large">This rule set is too large for one QR. Use the encrypted .fprules file instead.</string>
+    <string name="private_history_backup_qr_camera_denied">Camera access is needed only while scanning the QR</string>
 
     <string name="private_history_cleanup_previewing">Counting matching records without displaying their URLs…</string>
     <string name="private_history_cleanup_nothing">No matching history records</string>
@@ -171,6 +196,19 @@
         <item>Always allow and save</item>
         <item>Never save to history</item>
         <item>Save only the site homepage</item>
+        <item>Save temporarily, then forget</item>
+        <item>Save now, forget at next app start</item>
+    </string-array>
+    <string-array name="private_history_toolbar_actions">
+        <item>Never save this site</item>
+        <item>Keep only this site’s homepage</item>
+        <item>Always allow this exact page</item>
+        <item>Forget this site at next app start</item>
+        <item>Forget this site after 24 hours</item>
+        <item>Shield this tab and tabs opened from it</item>
+        <item>Shield the next page in this tab</item>
+        <item>Shield all history for 15 minutes</item>
+        <item>Open Privacy Studio</item>
     </string-array>
     <string-array name="private_history_rule_actions">
         <item>Edit</item>

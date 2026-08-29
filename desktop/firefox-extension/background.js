@@ -31,7 +31,13 @@ const DEFAULTS = Object.freeze({
   lastError: "",
 });
 
-const ACTION = Object.freeze({ ALLOW: "ALLOW", BLOCK: "BLOCK", COLLAPSE: "COLLAPSE_TO_ROOT" });
+const ACTION = Object.freeze({
+  ALLOW: "ALLOW",
+  BLOCK: "BLOCK",
+  COLLAPSE: "COLLAPSE_TO_ROOT",
+  FORGET_AFTER: "FORGET_AFTER",
+  FORGET_ON_RESTART: "FORGET_ON_RESTART",
+});
 const MATCHER = Object.freeze({
   DOMAIN: "DOMAIN",
   DOMAIN_EXCEPT_ROOT: "DOMAIN_EXCEPT_ROOT",
@@ -49,13 +55,79 @@ const SYNC_KEYS = Object.freeze([
   "enabled", "caseSensitive", "wholeWord", "domains", "keywords", "regex", "visualRules",
   "activeProfiles", "scrubOnStartup", "scrubEveryMinutes", "syncRules", "encryptedSync",
 ]);
+const SHIELD_SETTING_KEYS = Object.freeze([
+  "enabled", "caseSensitive", "wholeWord", "domains", "keywords", "regex", "visualRules",
+  "activeProfiles", "temporaryUntil",
+]);
 const DELETE_RETRY_DELAYS_MS = Object.freeze([0, 120, 450, 1200]);
 const BACKUP_HEADER = "FENIX-PRIVACY-2\n";
 const PBKDF2_ITERATIONS = 210000;
+const EPHEMERAL_STATE_KEY = "privacyStudioEphemeralV3";
 const sessionPrivateTabs = new Set();
+const inheritingPrivateTabs = new Set();
+const oneShotTabs = new Map();
 let sessionBlockAll = false;
+let ephemeralStateLoaded = false;
+let ephemeralStateLoad = null;
 let cached = null;
 const pendingDeletes = new Map();
+
+async function ensureEphemeralState() {
+  if (ephemeralStateLoaded) return;
+  if (!ephemeralStateLoad) {
+    ephemeralStateLoad = (async () => {
+      try {
+        const area = browser.storage.session;
+        if (!area?.get) return;
+        const stored = await area.get(EPHEMERAL_STATE_KEY);
+        const value = stored?.[EPHEMERAL_STATE_KEY];
+        if (!value || typeof value !== "object") return;
+        sessionBlockAll = value.sessionBlockAll === true;
+        for (const id of value.privateTabs || []) if (Number.isInteger(id)) sessionPrivateTabs.add(id);
+        for (const id of value.inheritingTabs || []) if (Number.isInteger(id)) inheritingPrivateTabs.add(id);
+        for (const entry of value.oneShots || []) {
+          if (!Array.isArray(entry) || !Number.isInteger(entry[0]) || typeof entry[1] !== "object") continue;
+          oneShotTabs.set(entry[0], {
+            armedUrl: String(entry[1].armedUrl || ""),
+            protectedUrl: String(entry[1].protectedUrl || ""),
+          });
+        }
+      } catch (_) {
+        // Session protection falls back to the current event-page lifetime.
+      } finally {
+        ephemeralStateLoaded = true;
+      }
+    })();
+  }
+  await ephemeralStateLoad;
+}
+
+async function persistEphemeralState() {
+  const area = browser.storage.session;
+  if (!area?.set) return;
+  try {
+    await area.set({
+      [EPHEMERAL_STATE_KEY]: {
+        sessionBlockAll,
+        privateTabs: [...sessionPrivateTabs],
+        inheritingTabs: [...inheritingPrivateTabs],
+        oneShots: [...oneShotTabs.entries()],
+      },
+    });
+  } catch (_) {
+    // Never fall back to disk for process/session-only tab URLs.
+  }
+}
+
+async function resetEphemeralState() {
+  sessionBlockAll = false;
+  sessionPrivateTabs.clear();
+  inheritingPrivateTabs.clear();
+  oneShotTabs.clear();
+  ephemeralStateLoaded = true;
+  ephemeralStateLoad = Promise.resolve();
+  try { await browser.storage.session?.remove?.(EPHEMERAL_STATE_KEY); } catch (_) { /* already empty */ }
+}
 
 function cleanLines(value) {
   const items = Array.isArray(value) ? value : String(value || "").split(/\r?\n/);
@@ -86,6 +158,7 @@ function normalizeVisualRule(raw = {}) {
     action,
     enabled: raw.enabled !== false,
     expiresAtEpochMillis: Math.max(0, Number(raw.expiresAtEpochMillis || 0)),
+    retentionMillis: Math.max(0, Number(raw.retentionMillis || 0)),
     clearCookies: Boolean(raw.clearCookies),
     clearCache: Boolean(raw.clearCache),
     clearDownloads: Boolean(raw.clearDownloads),
@@ -253,16 +326,23 @@ function visualRuleMatches(rule, url, title, settings) {
   }
 }
 
-function decide(url, title, settings, { tabId = null } = {}) {
+function activeVisualRules(settings) {
+  const activeProfiles = new Set(settings.activeProfiles);
+  return settings.visualRules.filter((rule) => rule.enabled
+    && activeProfiles.has(rule.profile)
+    && (!rule.expiresAtEpochMillis || rule.expiresAtEpochMillis > Date.now()));
+}
+
+function decide(url, title, settings, { tabId = null, includeTransientProtection = true } = {}) {
   if (!settings.enabled || !url) return { action: ACTION.ALLOW, rule: null, collapsedUrl: "" };
-  if (sessionBlockAll || Number(settings.temporaryUntil) > Date.now() || (tabId != null && sessionPrivateTabs.has(tabId))) {
+  const oneShot = tabId != null ? oneShotTabs.get(tabId) : null;
+  const oneShotActive = Boolean(oneShot?.protectedUrl && oneShot.protectedUrl === url);
+  if (includeTransientProtection && (sessionBlockAll || Number(settings.temporaryUntil) > Date.now()
+    || (tabId != null && sessionPrivateTabs.has(tabId)) || oneShotActive)) {
     return { action: ACTION.BLOCK, rule: null, collapsedUrl: "" };
   }
 
-  const activeProfiles = new Set(settings.activeProfiles);
-  const activeRules = settings.visualRules.filter((rule) => rule.enabled
-    && activeProfiles.has(rule.profile)
-    && (!rule.expiresAtEpochMillis || rule.expiresAtEpochMillis > Date.now()));
+  const activeRules = activeVisualRules(settings);
   const allowed = activeRules.find((rule) => rule.action === ACTION.ALLOW && visualRuleMatches(rule, url, title, settings));
   if (allowed) return { action: ACTION.ALLOW, rule: allowed, collapsedUrl: "" };
   const matched = activeRules.find((rule) => rule.action !== ACTION.ALLOW && visualRuleMatches(rule, url, title, settings));
@@ -292,8 +372,53 @@ function decide(url, title, settings, { tabId = null } = {}) {
   return { action: ACTION.ALLOW, rule: null, collapsedUrl: "" };
 }
 
+function shouldCloseRestoredTab(url, title, settings) {
+  const matching = activeVisualRules(settings).filter((rule) => visualRuleMatches(rule, url, title, settings));
+  const allow = matching.find((rule) => rule.action === ACTION.ALLOW);
+  if (allow) return Boolean(allow.closeTab);
+  return matching.some((rule) => rule.action !== ACTION.ALLOW && rule.closeTab);
+}
+
+function describeDecision(decision, settings, { tabId = null } = {}) {
+  if (!settings.enabled) return "Protection is paused";
+  if (sessionBlockAll) return "Session shield is active";
+  if (Number(settings.temporaryUntil) > Date.now()) return "Temporary shield is active";
+  if (tabId != null && sessionPrivateTabs.has(tabId)) {
+    return inheritingPrivateTabs.has(tabId)
+      ? "This tab and tabs opened from it are protected"
+      : "This tab is protected until it closes";
+  }
+  if (tabId != null && oneShotTabs.has(tabId)) return "The next navigation is protected";
+  if (decision.rule) {
+    const labels = {
+      [ACTION.ALLOW]: "Saved normally",
+      [ACTION.BLOCK]: "Never saved",
+      [ACTION.COLLAPSE]: "Collapsed to the homepage",
+      [ACTION.FORGET_AFTER]: "Saved temporarily, then forgotten",
+      [ACTION.FORGET_ON_RESTART]: "Forgotten at the next Firefox start",
+    };
+    return `${labels[decision.action] || decision.action} · ${decision.rule.name}`;
+  }
+  if (decision.action === ACTION.BLOCK) return "Matched a compatibility domain, word or regular expression";
+  return "No matching rule; saved normally";
+}
+
 function shouldSuppress(url, title, settings) {
-  return decide(url, title, settings).action !== ACTION.ALLOW;
+  return removesImmediately(decide(url, title, settings));
+}
+
+function removesImmediately(decision) {
+  return decision.action === ACTION.BLOCK || decision.action === ACTION.COLLAPSE;
+}
+
+function shouldRemoveStoredVisit(decision, lastVisitTime, { includeSessionRules = false } = {}) {
+  if (removesImmediately(decision)) return true;
+  if (decision.action === ACTION.FORGET_ON_RESTART) return includeSessionRules;
+  if (decision.action === ACTION.FORGET_AFTER) {
+    const retention = Math.max(60000, Number(decision.rule?.retentionMillis || 0));
+    return retention > 0 && Number(lastVisitTime || 0) <= Date.now() - retention;
+  }
+  return false;
 }
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
@@ -378,28 +503,24 @@ async function executeOptionalActions(decision, url, tabId) {
       const items = await browser.downloads.search({ query: parsed ? [parsed.hostname] : [url] });
       for (const item of items) await browser.downloads.erase({ id: item.id });
     }
-    if (rule.closeTab && browser.tabs?.remove) {
-      if (tabId != null) await browser.tabs.remove(tabId);
-      else if (browser.tabs.query) {
-        const tabs = await browser.tabs.query({});
-        const ids = tabs.filter((tab) => tab.url === url).map((tab) => tab.id).filter(Number.isInteger);
-        if (ids.length) await browser.tabs.remove(ids);
-      }
-    }
+    // closeTab is applied only to restored tabs during the next Firefox startup.
+    // A matching live page must stay usable throughout the current session.
   } catch (error) {
     await updateDiagnostics({ lastError: `Optional action: ${String(error?.message || error)}` });
   }
 }
 
 async function applyDecision(url, title = "", { countRemoval = false, tabId = null } = {}) {
+  await ensureEphemeralState();
   const settings = await getSettings();
   const decision = decide(url, title, settings, { tabId });
   if (decision.action === ACTION.ALLOW) return false;
+  await executeOptionalActions(decision, url, tabId);
+  if (!removesImmediately(decision)) return false;
   const deleted = await deleteUrlWithRetries(url);
   if (decision.action === ACTION.COLLAPSE && decision.collapsedUrl && browser.history.addUrl) {
     await browser.history.addUrl({ url: decision.collapsedUrl });
   }
-  await executeOptionalActions(decision, url, tabId);
   if (deleted && countRemoval) {
     await recordProtection(decision.action === ACTION.COLLAPSE ? EVENT.COLLAPSED : EVENT.PREVENTED, 1);
   } else {
@@ -408,7 +529,7 @@ async function applyDecision(url, title = "", { countRemoval = false, tabId = nu
   return deleted;
 }
 
-async function scanHistory({ execute = false } = {}) {
+async function scanHistory({ execute = false, includeSessionRules = false, restartOnly = false } = {}) {
   const settings = await getSettings();
   if (!settings.enabled) return { removed: 0, scanned: 0, collapsed: 0, matching: 0 };
   let endTime = Date.now() + 1;
@@ -421,8 +542,14 @@ async function scanHistory({ execute = false } = {}) {
     if (!batch.length) break;
     scanned += batch.length;
     for (const item of batch) {
-      const decision = decide(item.url, item.title || "", settings);
-      if (decision.action === ACTION.ALLOW) continue;
+      const decision = decide(
+        item.url,
+        item.title || "",
+        settings,
+        { includeTransientProtection: false },
+      );
+      if (restartOnly && decision.action !== ACTION.FORGET_ON_RESTART) continue;
+      if (!shouldRemoveStoredVisit(decision, item.lastVisitTime, { includeSessionRules })) continue;
       removed += 1;
       if (decision.action === ACTION.COLLAPSE) collapsed += 1;
       if (execute) {
@@ -447,7 +574,9 @@ async function scanHistory({ execute = false } = {}) {
   return { removed: execute ? removed : 0, scanned, collapsed, matching: removed };
 }
 
-async function scrubAllHistory() { return scanHistory({ execute: true }); }
+async function scrubAllHistory({ includeSessionRules = false, restartOnly = false } = {}) {
+  return scanHistory({ execute: true, includeSessionRules, restartOnly });
+}
 
 async function scheduleAlarm() {
   const settings = await getSettings();
@@ -457,7 +586,8 @@ async function scheduleAlarm() {
 
 async function runSelfTest() {
   const failures = [];
-  const check = (name, value) => { if (!value) failures.push(name); };
+  let total = 0;
+  const check = (name, value) => { total += 1; if (!value) failures.push(name); };
   const base = normalizeSettings({ enabled: true });
   check("legacy-domain", shouldSuppress("https://self-test.invalid/x", "", normalizeSettings({ ...base, domains: ["self-test.invalid"] })));
   const rules = [normalizeVisualRule({
@@ -469,7 +599,13 @@ async function runSelfTest() {
   check("collapse-path", decide("https://self-test.invalid/path", "", collapseSettings).collapsedUrl === "https://self-test.invalid/");
   check("counter-shape", ["totalRemoved", "todayProtected", "weekProtected"].every((key) => Number.isFinite(base[key])));
   check("cookie-default", !rules[0].clearCookies);
-  const result = { ok: failures.length === 0, passed: 5 - failures.length, total: 5, failures };
+  check("restored-tab-default", !rules[0].closeTab);
+  const delayedSettings = normalizeSettings({ ...base, visualRules: [normalizeVisualRule({
+    id: "self-test-delay", name: "self-test-delay", matcher: MATCHER.DOMAIN,
+    value: "delay-self-test.invalid", action: ACTION.FORGET_AFTER, retentionMillis: 3600000,
+  })] });
+  check("delayed-not-immediate", !shouldSuppress("https://delay-self-test.invalid/page", "", delayedSettings));
+  const result = { ok: failures.length === 0, passed: total - failures.length, total, failures };
   await updateDiagnostics({
     selfTestOk: result.ok,
     selfTestPassed: result.passed,
@@ -569,14 +705,22 @@ async function setupContextMenus() {
     ["keep-homepage", "Keep only this site's homepage"],
     ["allow-page", "Always allow this exact page"],
     ["collapse-site", "Collapse this site to its homepage"],
+    ["forget-restart", "Keep history only until Firefox restarts"],
+    ["forget-24h", "Forget this site after 24 hours"],
     ["private-tab", "Hide history for this tab until it closes"],
   ];
   for (const [id, title] of items) browser.contextMenus.create({ id, title, contexts: ["page"] });
 }
 
 async function addQuickRule(menuId, url, tabId) {
+  await ensureEphemeralState();
   if (menuId === "private-tab") {
-    if (tabId != null) sessionPrivateTabs.add(tabId);
+    if (tabId != null) {
+      sessionPrivateTabs.add(tabId);
+      inheritingPrivateTabs.add(tabId);
+      await persistEphemeralState();
+      await updatePageShield(tabId, url, "");
+    }
     return;
   }
   let parsed;
@@ -592,21 +736,139 @@ async function addQuickRule(menuId, url, tabId) {
     value: menuId === "allow-page" ? url
       : menuId === "block-section" ? `${parsed.hostname}/${first || ""}` : parsed.hostname,
     action: menuId === "allow-page" ? ACTION.ALLOW
-      : menuId === "collapse-site" ? ACTION.COLLAPSE : ACTION.BLOCK,
+      : menuId === "collapse-site" ? ACTION.COLLAPSE
+        : menuId === "forget-restart" ? ACTION.FORGET_ON_RESTART
+          : menuId === "forget-24h" ? ACTION.FORGET_AFTER : ACTION.BLOCK,
+    retentionMillis: menuId === "forget-24h" ? 24 * 60 * 60 * 1000 : 0,
   });
-  if (menuId === "block-site") rule.matcher = MATCHER.DOMAIN;
+  if (["block-site", "forget-restart", "forget-24h"].includes(menuId)) rule.matcher = MATCHER.DOMAIN;
   await persistSettings({ ...settings, visualRules: [...settings.visualRules, rule] });
+  await refreshOpenShields();
 }
 
-async function initializeBackground({ scrub = false } = {}) {
+async function advanceOneShot(tabId, url) {
+  await ensureEphemeralState();
+  const pending = oneShotTabs.get(tabId);
+  if (!pending || !url) return;
+  let changed = false;
+  if (!pending.protectedUrl && url !== pending.armedUrl) {
+    pending.protectedUrl = url;
+    oneShotTabs.set(tabId, pending);
+    changed = true;
+  } else if (pending.protectedUrl && pending.protectedUrl !== url) {
+    oneShotTabs.delete(tabId);
+    changed = true;
+  }
+  if (changed) await persistEphemeralState();
+}
+
+async function clearTabProtection(tabId) {
+  await ensureEphemeralState();
+  sessionPrivateTabs.delete(tabId);
+  inheritingPrivateTabs.delete(tabId);
+  oneShotTabs.delete(tabId);
+  await persistEphemeralState();
+}
+
+async function toggleTabShield(tabId, url, { inherit = true } = {}) {
+  await ensureEphemeralState();
+  if (!Number.isInteger(tabId)) return { active: false };
+  if (sessionPrivateTabs.has(tabId)) {
+    sessionPrivateTabs.delete(tabId);
+    inheritingPrivateTabs.delete(tabId);
+    oneShotTabs.delete(tabId);
+  } else {
+    sessionPrivateTabs.add(tabId);
+    if (inherit) inheritingPrivateTabs.add(tabId);
+  }
+  await persistEphemeralState();
+  await updatePageShield(tabId, url, "");
+  return { active: sessionPrivateTabs.has(tabId), inherit: inheritingPrivateTabs.has(tabId) };
+}
+
+async function closeRestoredMatchingTabs(settings, capturedStartupIds = null) {
+  if (!browser.tabs?.query || !browser.tabs?.remove) return 0;
+  // Capture the startup tab set before waiting for Firefox to finish hydration. A tab created by
+  // the user after this point is live and must never be closed by a closeTab rule.
+  const startupIds = capturedStartupIds || new Set((await browser.tabs.query({}))
+      .filter((tab) => Number.isInteger(tab.id))
+      .map((tab) => tab.id));
+  await sleep(750);
+  const tabs = await browser.tabs.query({});
+  const ids = tabs
+    .filter((tab) => startupIds.has(tab.id)
+      && shouldCloseRestoredTab(tab.url || "", tab.title || "", settings))
+    .map((tab) => tab.id);
+  if (ids.length) await browser.tabs.remove(ids);
+  return ids.length;
+}
+
+function shieldPresentation(decision, settings, tabId) {
+  if (!settings.enabled) return { icon: "icons/shield-paused.svg", title: "Fenix Privacy: paused" };
+  if (sessionBlockAll || Number(settings.temporaryUntil) > Date.now()
+    || (Number.isInteger(tabId) && sessionPrivateTabs.has(tabId))) {
+    return { icon: "icons/shield-block.svg", title: "Fenix Privacy: history blocked" };
+  }
+  if (decision.action === ACTION.BLOCK) {
+    return { icon: "icons/shield-block.svg", title: "Fenix Privacy: this page is not saved" };
+  }
+  if (decision.action === ACTION.COLLAPSE) {
+    return { icon: "icons/shield-collapse.svg", title: "Fenix Privacy: only the homepage is saved" };
+  }
+  if ([ACTION.FORGET_AFTER, ACTION.FORGET_ON_RESTART].includes(decision.action)) {
+    return { icon: "icons/shield-temporary.svg", title: "Fenix Privacy: this history is temporary" };
+  }
+  return { icon: "icons/shield-idle.svg", title: "Fenix Privacy: saved normally" };
+}
+
+async function updatePageShield(tabId, url, title) {
+  if (!Number.isInteger(tabId) || !url) return;
+  await ensureEphemeralState();
+  const isWebPage = /^https?:/i.test(url);
+  if (browser.pageAction) {
+    try {
+      if (!isWebPage) await browser.pageAction.hide(tabId);
+      else await browser.pageAction.show(tabId);
+    } catch (_) { /* unsupported internal pages */ }
+  }
+  if (!isWebPage) return;
+  const settings = await getSettings();
+  const decision = decide(url, title, settings, { tabId });
+  const presentation = shieldPresentation(decision, settings, tabId);
   try {
+    if (browser.pageAction?.setIcon) await browser.pageAction.setIcon({ tabId, path: presentation.icon });
+    if (browser.pageAction?.setTitle) await browser.pageAction.setTitle({ tabId, title: presentation.title });
+    if (browser.action?.setIcon) await browser.action.setIcon({ tabId, path: presentation.icon });
+    if (browser.action?.setTitle) await browser.action.setTitle({ tabId, title: presentation.title });
+  } catch (_) { /* presentation never breaks protection */ }
+}
+
+async function refreshOpenShields() {
+  if (!browser.tabs?.query) return;
+  const tabs = await browser.tabs.query({});
+  await Promise.all(tabs.map((tab) => updatePageShield(tab.id, tab.url || "", tab.title || "")));
+}
+
+async function initializeBackground({ scrub = false, closeRestored = false } = {}) {
+  try {
+    await ensureEphemeralState();
+    const startupIds = closeRestored && browser.tabs?.query
+      ? new Set((await browser.tabs.query({})).filter((tab) => Number.isInteger(tab.id)).map((tab) => tab.id))
+      : null;
     cached = null;
     const settings = await getSettings();
     await scheduleAlarm();
     await setupContextMenus();
     await runSelfTest();
     await updateShieldBadge(settings);
-    if (scrub && settings.scrubOnStartup) await scrubAllHistory();
+    if (scrub && (settings.scrubOnStartup || closeRestored)) {
+      await scrubAllHistory({
+        includeSessionRules: closeRestored,
+        restartOnly: closeRestored && !settings.scrubOnStartup,
+      });
+    }
+    if (closeRestored) await closeRestoredMatchingTabs(settings, startupIds);
+    await refreshOpenShields();
     await updateDiagnostics({ lastError: "" });
   } catch (error) {
     await updateDiagnostics({ lastError: String(error?.message || error) });
@@ -617,34 +879,81 @@ browser.history.onVisited.addListener((item) => {
   void applyDecision(item.url, item.title || "", { countRemoval: true });
 });
 browser.webNavigation.onCommitted.addListener((details) => {
-  if (details.frameId === 0) void applyDecision(details.url, "", { tabId: details.tabId });
+  if (details.frameId === 0) {
+    void (async () => {
+      await advanceOneShot(details.tabId, details.url);
+      await applyDecision(details.url, "", { tabId: details.tabId });
+      await updatePageShield(details.tabId, details.url, "");
+    })();
+  }
 });
 if (browser.webNavigation.onHistoryStateUpdated) {
   browser.webNavigation.onHistoryStateUpdated.addListener((details) => {
-    if (details.frameId === 0) void applyDecision(details.url, "", { tabId: details.tabId });
+    if (details.frameId === 0) {
+      void (async () => {
+        await advanceOneShot(details.tabId, details.url);
+        await applyDecision(details.url, "", { tabId: details.tabId });
+        await updatePageShield(details.tabId, details.url, "");
+      })();
+    }
   });
 }
 browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   const url = changeInfo.url || tab.url;
   const title = changeInfo.title || tab.title || "";
   if (url && (changeInfo.url || changeInfo.title || changeInfo.status === "complete")) {
-    void applyDecision(url, title, { tabId });
+    void (async () => {
+      if (changeInfo.url) await advanceOneShot(tabId, url);
+      await applyDecision(url, title, { tabId });
+      await updatePageShield(tabId, url, title);
+    })();
   }
 });
-if (browser.tabs.onRemoved) browser.tabs.onRemoved.addListener((tabId) => sessionPrivateTabs.delete(tabId));
-browser.alarms.onAlarm.addListener((alarm) => { if (alarm.name === ALARM_NAME) void scrubAllHistory(); });
+if (browser.tabs.onCreated) {
+  browser.tabs.onCreated.addListener((tab) => {
+    void (async () => {
+      await ensureEphemeralState();
+      if (Number.isInteger(tab.id) && Number.isInteger(tab.openerTabId)
+        && sessionPrivateTabs.has(tab.openerTabId) && inheritingPrivateTabs.has(tab.openerTabId)) {
+        sessionPrivateTabs.add(tab.id);
+        inheritingPrivateTabs.add(tab.id);
+        await persistEphemeralState();
+      }
+      if (Number.isInteger(tab.id) && tab.url) await updatePageShield(tab.id, tab.url, tab.title || "");
+    })();
+  });
+}
+if (browser.tabs.onActivated) {
+  browser.tabs.onActivated.addListener(async ({ tabId }) => {
+    try {
+      const tab = await browser.tabs.get(tabId);
+      await updatePageShield(tabId, tab.url || "", tab.title || "");
+    } catch (_) { /* tab may have closed */ }
+  });
+}
+if (browser.tabs.onRemoved) browser.tabs.onRemoved.addListener((tabId) => { void clearTabProtection(tabId); });
+browser.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM_NAME) void scrubAllHistory({ includeSessionRules: false });
+});
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "sync" && areaName !== "local") return;
   cached = null;
   if (Object.keys(changes || {}).some((key) => ["enabled", "scrubEveryMinutes", "syncRules"].includes(key))) {
     void scheduleAlarm();
   }
+  if (Object.keys(changes || {}).some((key) => SHIELD_SETTING_KEYS.includes(key))) void refreshOpenShields();
 });
-browser.runtime.onInstalled.addListener(() => { void initializeBackground({ scrub: true }); });
-browser.runtime.onStartup.addListener(() => { sessionBlockAll = false; void initializeBackground({ scrub: true }); });
+browser.runtime.onInstalled.addListener(() => { void initializeBackground({ scrub: true, closeRestored: false }); });
+browser.runtime.onStartup.addListener(() => {
+  void (async () => {
+    await resetEphemeralState();
+    await initializeBackground({ scrub: true, closeRestored: true });
+  })();
+});
 if (browser.contextMenus?.onClicked) {
   browser.contextMenus.onClicked.addListener((info, tab) => {
-    if (String(info.menuItemId).startsWith("block-") || ["keep-homepage", "allow-page", "collapse-site", "private-tab"].includes(info.menuItemId)) {
+    if (String(info.menuItemId).startsWith("block-")
+      || ["keep-homepage", "allow-page", "collapse-site", "forget-restart", "forget-24h", "private-tab"].includes(info.menuItemId)) {
       void addQuickRule(info.menuItemId, info.pageUrl || tab?.url || "", tab?.id);
     }
   });
@@ -660,14 +969,16 @@ if (browser.permissions?.onRemoved) {
 
 browser.runtime.onMessage.addListener(async (message) => {
   if (!message || typeof message !== "object") return undefined;
+  await ensureEphemeralState();
   if (message.type === "get-settings") return getSettings();
   if (message.type === "set-settings") {
     const updated = await persistSettings(message.settings || {});
     await scheduleAlarm();
+    await refreshOpenShields();
     return updated;
   }
-  if (message.type === "preview-scrub") return scanHistory({ execute: false });
-  if (message.type === "scrub-now") return scrubAllHistory();
+  if (message.type === "preview-scrub") return scanHistory({ execute: false, includeSessionRules: true });
+  if (message.type === "scrub-now") return scrubAllHistory({ includeSessionRules: true });
   if (message.type === "test-rule") {
     const settings = normalizeSettings(message.settings || await getSettings());
     const result = decide(message.url || "", message.title || "", settings);
@@ -678,11 +989,36 @@ browser.runtime.onMessage.addListener(async (message) => {
     if (message.mode === "session") sessionBlockAll = true;
     else if (message.mode === "off") { sessionBlockAll = false; await persistSettings({ ...settings, temporaryUntil: 0 }); }
     else await persistSettings({ ...settings, temporaryUntil: Date.now() + Math.max(1, Number(message.minutes || 15)) * 60000 });
+    await persistEphemeralState();
+    await refreshOpenShields();
     return { sessionBlockAll, temporaryUntil: (await getSettings()).temporaryUntil };
   }
   if (message.type === "temporary-tab") {
-    if (Number.isInteger(message.tabId)) sessionPrivateTabs.add(message.tabId);
-    return { active: Number.isInteger(message.tabId) };
+    return toggleTabShield(message.tabId, message.url || "", { inherit: message.inherit !== false });
+  }
+  if (message.type === "protect-next-navigation") {
+    if (!Number.isInteger(message.tabId)) return { armed: false };
+    oneShotTabs.set(message.tabId, { armedUrl: String(message.url || ""), protectedUrl: "" });
+    await persistEphemeralState();
+    await updatePageShield(message.tabId, message.url || "", "");
+    return { armed: true };
+  }
+  if (message.type === "quick-action") {
+    await addQuickRule(String(message.action || ""), String(message.url || ""), message.tabId);
+    return { ok: true };
+  }
+  if (message.type === "get-page-status") {
+    const settings = await getSettings();
+    const result = decide(message.url || "", message.title || "", settings, { tabId: message.tabId });
+    return {
+      action: result.action,
+      ruleName: result.rule?.name || "",
+      matcher: result.rule?.matcher || "",
+      reason: describeDecision(result, settings, { tabId: message.tabId }),
+      tabProtected: Number.isInteger(message.tabId) && sessionPrivateTabs.has(message.tabId),
+      inherit: Number.isInteger(message.tabId) && inheritingPrivateTabs.has(message.tabId),
+      nextNavigationArmed: Number.isInteger(message.tabId) && oneShotTabs.has(message.tabId),
+    };
   }
   if (message.type === "export-encrypted") return { bundle: await encryptRuleBundle(await getSettings(), message.passphrase || "") };
   if (message.type === "import-encrypted") return persistSettings(await decryptRuleBundle(message.bundle || "", message.passphrase || ""));
@@ -722,4 +1058,4 @@ browser.runtime.onMessage.addListener(async (message) => {
   return undefined;
 });
 
-void initializeBackground({ scrub: true });
+void initializeBackground({ scrub: false, closeRestored: false });

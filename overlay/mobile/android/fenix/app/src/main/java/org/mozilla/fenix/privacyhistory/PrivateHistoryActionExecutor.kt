@@ -72,6 +72,7 @@ class PrivateHistoryActionExecutor(
     private suspend fun closeRestoredMatchingTabs(): Int {
         repeat(CLOSE_TAB_ATTEMPTS) { attempt ->
             val ids = store.value.state.tabs
+                .filter { it.restored }
                 .filter { tab ->
                     rules.shouldCloseTab(
                         uri = tab.content.url,

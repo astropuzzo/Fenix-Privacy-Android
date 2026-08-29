@@ -90,6 +90,7 @@
     <string name="private_history_builder_value">Dominio, URL, percorso, parola o espressione</string>
     <string name="private_history_builder_query_parameter">Nome parametro di ricerca (facoltativo)</string>
     <string name="private_history_builder_action">Azione sulla cronologia</string>
+    <string name="private_history_builder_retention">Dimentica dopo ore</string>
     <string name="private_history_builder_expiry">Scadenza in minuti (vuoto = mai)</string>
     <string name="private_history_builder_enabled">Regola attiva</string>
     <string name="private_history_builder_optional_actions">Azioni facoltative esplicite — i cookie restano disattivati per default</string>
@@ -108,6 +109,23 @@
     <string name="private_history_tester_allowed">✅ Salvato normalmente. Cookie e accesso restano disponibili.</string>
     <string name="private_history_tester_blocked">🛡️ Escluso dalla cronologia. Cookie e accesso restano disponibili salvo azione esplicita della regola.</string>
     <string name="private_history_tester_collapsed">🏠 La pagina specifica viene nascosta; in cronologia resta soltanto %1$s</string>
+    <string name="private_history_tester_temporary">⏱ Salvato temporaneamente, poi rimosso dopo la durata scelta.</string>
+    <string name="private_history_tester_restart">⏻ Salvato durante questa sessione, poi rimosso al prossimo avvio.</string>
+
+    <string name="private_history_toolbar_description">Scudo Fenix Privacy</string>
+    <string name="private_history_toolbar_title">Scudo · %1$s</string>
+    <string name="private_history_toolbar_status_allow">Salvata normalmente · nessuna regola corrispondente</string>
+    <string name="private_history_toolbar_status_block">Questa pagina non viene salvata in cronologia</string>
+    <string name="private_history_toolbar_status_collapse">Viene conservata soltanto la homepage del sito</string>
+    <string name="private_history_toolbar_status_temporary">Salvata temporaneamente, poi dimenticata</string>
+    <string name="private_history_toolbar_status_restart">Dimenticata al prossimo avvio dell’app</string>
+    <string name="private_history_toolbar_status_tab">Questa scheda e quelle aperte da essa sono protette</string>
+    <string name="private_history_toolbar_rule_name">Scudo %1$s</string>
+    <string name="private_history_toolbar_rule_saved">Regola salvata e attiva</string>
+    <string name="private_history_toolbar_tab_enabled">Protezione scheda e schede figlie attiva</string>
+    <string name="private_history_toolbar_tab_disabled">Protezione scheda disattivata</string>
+    <string name="private_history_toolbar_next_armed">La prossima pagina in questa scheda non verrà salvata</string>
+    <string name="private_history_toolbar_temporary_enabled">Tutta la cronologia è protetta per 15 minuti</string>
 
     <string name="private_history_temporary_title">Protezione temporanea</string>
     <string name="private_history_temporary_off">Disattivata — funzionano le normali regole selettive</string>
@@ -132,6 +150,13 @@
     <string name="private_history_backup_exported">Pacchetto di regole cifrato salvato</string>
     <string name="private_history_backup_imported">Importate %1$d regole visuali</string>
     <string name="private_history_backup_failed">Impossibile decifrare o salvare il pacchetto</string>
+    <string name="private_history_backup_qr_export_title">Mostra QR delle regole cifrate</string>
+    <string name="private_history_backup_qr_export_summary">Trasferisci le regole localmente; la password non viene mai inclusa</string>
+    <string name="private_history_backup_qr_import_title">Scansiona QR delle regole cifrate</string>
+    <string name="private_history_backup_qr_import_summary">Importa un QR creato da Firefox Desktop o Fenix Privacy Android</string>
+    <string name="private_history_backup_qr_ready">Scansionalo localmente. Il QR contiene soltanto regole cifrate.</string>
+    <string name="private_history_backup_qr_too_large">Queste regole sono troppo grandi per un solo QR. Usa il file cifrato .fprules.</string>
+    <string name="private_history_backup_qr_camera_denied">La fotocamera serve soltanto durante la scansione del QR</string>
 
     <string name="private_history_cleanup_previewing">Conteggio delle voci corrispondenti senza mostrare gli URL…</string>
     <string name="private_history_cleanup_nothing">Nessuna voce della cronologia corrispondente</string>
@@ -170,6 +195,19 @@
         <item>Consenti e salva sempre</item>
         <item>Non salvare mai in cronologia</item>
         <item>Salva soltanto la homepage del sito</item>
+        <item>Salva temporaneamente, poi dimentica</item>
+        <item>Salva ora, dimentica al prossimo avvio</item>
+    </string-array>
+    <string-array name="private_history_toolbar_actions">
+        <item>Non salvare mai questo sito</item>
+        <item>Conserva soltanto la homepage del sito</item>
+        <item>Consenti sempre questa pagina esatta</item>
+        <item>Dimentica questo sito al prossimo avvio</item>
+        <item>Dimentica questo sito dopo 24 ore</item>
+        <item>Proteggi questa scheda e quelle aperte da essa</item>
+        <item>Proteggi la prossima pagina in questa scheda</item>
+        <item>Proteggi tutta la cronologia per 15 minuti</item>
+        <item>Apri Privacy Studio</item>
     </string-array>
     <string-array name="private_history_rule_actions">
         <item>Modifica</item>

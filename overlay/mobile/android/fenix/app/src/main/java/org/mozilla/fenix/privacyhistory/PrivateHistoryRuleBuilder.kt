@@ -47,6 +47,13 @@ class PrivateHistoryRuleBuilder(
             context.resources.getStringArray(R.array.private_history_action_labels),
             existing?.action?.ordinal ?: PrivateHistoryRule.Action.BLOCK.ordinal,
         )
+        val retentionHours = field(
+            R.string.private_history_builder_retention,
+            existing?.retentionMillis?.takeIf { it > 0L }
+                ?.let { (it.toDouble() / HOUR_MILLIS).toString().trimEnd('0').trimEnd('.') }
+                ?: "24",
+            InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL,
+        )
         val expiryMinutes = field(
             R.string.private_history_builder_expiry,
             existing?.expiresAtEpochMillis?.takeIf { it > System.currentTimeMillis() }
@@ -70,6 +77,8 @@ class PrivateHistoryRuleBuilder(
             label(R.string.private_history_builder_value), value,
             label(R.string.private_history_builder_query_parameter), queryParameter,
             label(R.string.private_history_builder_action), action,
+            label(R.string.private_history_builder_retention).also { it.tag = RETENTION_LABEL_TAG },
+            retentionHours,
             label(R.string.private_history_builder_expiry), expiryMinutes,
             enabled,
             label(R.string.private_history_builder_optional_actions),
@@ -80,10 +89,15 @@ class PrivateHistoryRuleBuilder(
             queryParameter.visibility = if (
                 matcher.selectedItemPosition == PrivateHistoryRule.Matcher.QUERY_PARAMETER.ordinal
             ) View.VISIBLE else View.GONE
+            val retentionVisible = action.selectedItemPosition == PrivateHistoryRule.Action.FORGET_AFTER.ordinal
+            retentionHours.visibility = if (retentionVisible) View.VISIBLE else View.GONE
+            layout.findViewWithTag<TextView>(RETENTION_LABEL_TAG)?.visibility =
+                if (retentionVisible) View.VISIBLE else View.GONE
         }
         matcher.setSelection(existing?.matcher?.ordinal ?: PrivateHistoryRule.Matcher.DOMAIN.ordinal)
         refreshConditionalFields()
         matcher.onItemSelectedListener = SimpleItemSelectedListener { refreshConditionalFields() }
+        action.onItemSelectedListener = SimpleItemSelectedListener { refreshConditionalFields() }
 
         val dialog = AlertDialog.Builder(context)
             .setTitle(
@@ -117,6 +131,14 @@ class PrivateHistoryRuleBuilder(
                     action = PrivateHistoryRule.Action.entries[action.selectedItemPosition],
                     enabled = enabled.isChecked,
                     expiresAtEpochMillis = expiry,
+                    retentionMillis = if (
+                        action.selectedItemPosition == PrivateHistoryRule.Action.FORGET_AFTER.ordinal
+                    ) {
+                        ((retentionHours.text.toString().toDoubleOrNull() ?: 24.0)
+                            .coerceIn(MIN_RETENTION_HOURS, MAX_RETENTION_HOURS) * HOUR_MILLIS).toLong()
+                    } else {
+                        0L
+                    },
                     clearCookies = clearCookies.isChecked,
                     clearCache = clearCache.isChecked,
                     clearDownloads = clearDownloads.isChecked,
@@ -165,5 +187,9 @@ class PrivateHistoryRuleBuilder(
 
     companion object {
         private const val MAX_EXPIRY_MINUTES = 525_600L
+        private const val HOUR_MILLIS = 3_600_000.0
+        private const val MIN_RETENTION_HOURS = 1.0 / 60.0
+        private const val MAX_RETENTION_HOURS = 8_760.0
+        private const val RETENTION_LABEL_TAG = "private-history-retention-label"
     }
 }

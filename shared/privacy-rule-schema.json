@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/astropuzzo/Fenix-Privacy-Android/shared/privacy-rule-schema.json",
+  "title": "Fenix Privacy visual rule",
+  "description": "Portable rule shared by Firefox Desktop and Fenix Privacy Android. Rules never contain browsing history.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "profile",
+    "matcher",
+    "value",
+    "action",
+    "enabled"
+  ],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "profile": { "type": "string", "minLength": 1, "default": "Default" },
+    "matcher": {
+      "type": "string",
+      "enum": [
+        "DOMAIN",
+        "DOMAIN_EXCEPT_ROOT",
+        "PATH_PREFIX",
+        "URL_CONTAINS",
+        "TITLE_CONTAINS",
+        "QUERY_PARAMETER",
+        "REGEX",
+        "EXACT_URL"
+      ]
+    },
+    "value": { "type": "string", "minLength": 1 },
+    "queryParameter": { "type": "string", "default": "" },
+    "action": {
+      "type": "string",
+      "enum": [
+        "ALLOW",
+        "BLOCK",
+        "COLLAPSE_TO_ROOT",
+        "FORGET_AFTER",
+        "FORGET_ON_RESTART"
+      ]
+    },
+    "enabled": { "type": "boolean", "default": true },
+    "expiresAtEpochMillis": { "type": "integer", "minimum": 0, "default": 0 },
+    "retentionMillis": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Used by FORGET_AFTER. Implementations enforce a minimum of 60000 ms."
+    },
+    "clearCookies": { "type": "boolean", "default": false },
+    "clearCache": { "type": "boolean", "default": false },
+    "clearDownloads": { "type": "boolean", "default": false },
+    "closeTab": {
+      "type": "boolean",
+      "default": false,
+      "description": "Removes matching restored tabs on the next Firefox startup; never closes a live tab."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "matcher": { "const": "QUERY_PARAMETER" } },
+        "required": ["matcher"]
+      },
+      "then": { "required": ["queryParameter"] }
+    },
+    {
+      "if": {
+        "properties": { "action": { "const": "FORGET_AFTER" } },
+        "required": ["action"]
+      },
+      "then": {
+        "required": ["retentionMillis"],
+        "properties": { "retentionMillis": { "minimum": 60000 } }
+      }
+    }
+  ]
+}

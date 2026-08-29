@@ -92,11 +92,19 @@ jobs:
           gh release download "$DESKTOP_TAG" \
             --pattern 'Fenix-Privacy-Desktop-Installer.exe' \
             --dir bundle
+          if ! gh release download "$DESKTOP_TAG" \
+            --pattern 'desktop-signing.json' \
+            --dir bundle; then
+            printf '%s\n' \
+              '{"version":"legacy","xpiMozillaSigned":true,"exeAuthenticodeSigned":false,"status":"legacy-unknown"}' \
+              > bundle/desktop-signing.json
+          fi
 
           test -s bundle/Fenix-Privacy-Android.apk
           test -s bundle/update.json
           test -s bundle/Fenix-Privacy-Desktop.xpi
           test -s bundle/Fenix-Privacy-Desktop-Installer.exe
+          test -s bundle/desktop-signing.json
 
       - name: Verify downloaded assets and create release index
         env:
@@ -125,6 +133,7 @@ jobs:
               "update.json",
               "Fenix-Privacy-Desktop.xpi",
               "Fenix-Privacy-Desktop-Installer.exe",
+              "desktop-signing.json",
           ]
 
           hashes = {
@@ -144,7 +153,10 @@ jobs:
                   "upstreamRef": update.get("upstreamRef"),
                   "upstreamRevision": update.get("upstreamRevision"),
               },
-              "desktop": {"sourceTag": os.environ["DESKTOP_TAG"]},
+              "desktop": {
+                  "sourceTag": os.environ["DESKTOP_TAG"],
+                  "signing": json.loads((root / "desktop-signing.json").read_text(encoding="utf-8-sig")),
+              },
               "sha256": hashes,
           }
           (root / "release-index.json").write_text(
@@ -166,12 +178,18 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [[ "$(jq -r '.exeAuthenticodeSigned' bundle/desktop-signing.json)" == "true" ]]; then
+            EXE_NOTE="installer EXE Authenticode-signed and verified, containing the same Mozilla-signed XPI"
+          else
+            EXE_NOTE="installer EXE without Authenticode because no Windows code-signing certificate was configured; it contains the same Mozilla-signed XPI"
+          fi
+
           cat > "$RUNNER_TEMP/production-downloads-notes.md" <<EOF
           Current tested production downloads, refreshed automatically after every successful Android or Desktop release.
 
           - Android ARM64 APK: built from Mozilla Firefox release \`$ANDROID_TAG\`
           - Firefox Desktop XPI: Mozilla-signed and compatible with Windows, macOS and Linux (source \`$DESKTOP_TAG\`)
-          - Windows: installer EXE containing the same Mozilla-signed XPI
+          - Windows: $EXE_NOTE
 
           SHA-256 hashes and machine-readable source/version metadata are included.
           EOF
@@ -199,6 +217,7 @@ jobs:
             update.json \
             Fenix-Privacy-Desktop.xpi \
             Fenix-Privacy-Desktop-Installer.exe \
+            desktop-signing.json \
             SHA256SUMS.txt \
             release-index.json; do
             grep -Fxq "$required" <<< "$ASSETS"

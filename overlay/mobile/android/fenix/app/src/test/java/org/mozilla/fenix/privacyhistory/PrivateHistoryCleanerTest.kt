@@ -31,12 +31,14 @@ class PrivateHistoryCleanerTest {
     @Before
     fun setUp() {
         prefs.edit().clear().commit()
+        PrivateHistoryRules(testContext).clearTemporaryMode()
         PrivateHistoryStats(testContext).reset()
         prefs.edit().putString(PrivateHistoryRules.KEY_KEYWORDS, "blocked phrase").commit()
     }
 
     @After
     fun tearDown() {
+        PrivateHistoryRules(testContext).clearTemporaryMode()
         prefs.edit().clear().commit()
         PrivateHistoryStats(testContext).reset()
     }
@@ -81,10 +83,120 @@ class PrivateHistoryCleanerTest {
         coVerify(exactly = 1) { storage.deleteHistoryMetadataForUrl(url) }
     }
 
-    private fun visit(url: String, title: String, isRemote: Boolean) = VisitInfo(
+    @Test
+    fun `forget-after removes only visits older than the rule retention`() = runTest {
+        val storage = mockk<PlacesHistoryStorage>(relaxed = true)
+        val oldUrl = "https://temporary.example/old"
+        val recentUrl = "https://temporary.example/recent"
+        coEvery { storage.getDetailedVisits(any(), any(), any()) } returns listOf(
+            visit(url = oldUrl, title = "Old", isRemote = false, visitTime = 100_000L),
+            visit(url = recentUrl, title = "Recent", isRemote = false, visitTime = 190_000L),
+        )
+        coEvery { storage.getHistoryMetadataSince(0L) } returns emptyList()
+        prefs.edit().putString(
+            PrivateHistoryRules.KEY_VISUAL_RULES,
+            PrivateHistoryRule.encode(
+                listOf(
+                    PrivateHistoryRule(
+                        name = "Temporary",
+                        matcher = PrivateHistoryRule.Matcher.DOMAIN,
+                        value = "temporary.example",
+                        action = PrivateHistoryRule.Action.FORGET_AFTER,
+                        retentionMillis = 60_000L,
+                    ),
+                ),
+            ),
+        ).commit()
+
+        val removed = PrivateHistoryCleaner(
+            storage,
+            PrivateHistoryRules(testContext) { 200_000L },
+            PrivateHistoryStats(testContext),
+        ).purgeMatchingHistory()
+
+        assertEquals(1, removed)
+        coVerify(exactly = 1) { storage.deleteVisitsFor(oldUrl) }
+        coVerify(exactly = 0) { storage.deleteVisitsFor(recentUrl) }
+    }
+
+    @Test
+    fun `restart-only rules are skipped periodically and included at startup`() = runTest {
+        val storage = mockk<PlacesHistoryStorage>(relaxed = true)
+        val url = "https://restart.example/page"
+        coEvery { storage.getDetailedVisits(any(), any(), any()) } returns listOf(
+            visit(url = url, title = "Page", isRemote = false),
+        )
+        coEvery { storage.getHistoryMetadataSince(0L) } returns emptyList()
+        prefs.edit().putString(
+            PrivateHistoryRules.KEY_VISUAL_RULES,
+            PrivateHistoryRule.encode(
+                listOf(
+                    PrivateHistoryRule(
+                        name = "Restart",
+                        matcher = PrivateHistoryRule.Matcher.DOMAIN,
+                        value = "restart.example",
+                        action = PrivateHistoryRule.Action.FORGET_ON_RESTART,
+                    ),
+                ),
+            ),
+        ).commit()
+        val cleaner = PrivateHistoryCleaner(
+            storage,
+            PrivateHistoryRules(testContext),
+            PrivateHistoryStats(testContext),
+        )
+
+        assertEquals(0, cleaner.purgeMatchingHistory(includeRestartRules = false))
+        assertEquals(1, cleaner.purgeMatchingHistory(includeRestartRules = true))
+        coVerify(exactly = 1) { storage.deleteVisitsFor(url) }
+    }
+
+    @Test
+    fun `a clean metadata record cannot hide a matching visit for the same URL`() = runTest {
+        val storage = mockk<PlacesHistoryStorage>(relaxed = true)
+        val url = "https://clean.example/article"
+        coEvery { storage.getDetailedVisits(any(), any(), any()) } returns listOf(
+            visit(url = url, title = "blocked phrase", isRemote = false),
+        )
+        coEvery { storage.getHistoryMetadataSince(0L) } returns listOf(
+            metadata(url = url, searchTerm = "clean"),
+        )
+
+        val removed = PrivateHistoryCleaner(
+            storage,
+            PrivateHistoryRules(testContext),
+            PrivateHistoryStats(testContext),
+        ).purgeMatchingHistory()
+
+        assertEquals(1, removed)
+        coVerify(exactly = 1) { storage.deleteVisitsFor(url) }
+    }
+
+    @Test
+    fun `temporary live shield never turns cleanup into full history deletion`() = runTest {
+        val storage = mockk<PlacesHistoryStorage>(relaxed = true)
+        val url = "https://safe.example/article"
+        coEvery { storage.getDetailedVisits(any(), any(), any()) } returns listOf(
+            visit(url = url, title = "Safe", isRemote = false),
+        )
+        coEvery { storage.getHistoryMetadataSince(0L) } returns emptyList()
+        val rules = PrivateHistoryRules(testContext)
+        rules.setSessionMode(true)
+
+        val removed = PrivateHistoryCleaner(
+            storage,
+            rules,
+            PrivateHistoryStats(testContext),
+        ).purgeMatchingHistory(includeRestartRules = true)
+
+        assertEquals(0, removed)
+        coVerify(exactly = 0) { storage.deleteVisitsFor(url) }
+    }
+
+    private fun visit(url: String, title: String, isRemote: Boolean, visitTime: Long = 1L) = VisitInfo(
         url = url,
         title = title,
-        visitTime = 1L,
+        visitTime = visitTime,
         visitType = VisitType.LINK,
         previewImageUrl = null,
         isRemote = isRemote,

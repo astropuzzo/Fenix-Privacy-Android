@@ -26,9 +26,18 @@ class PrivateHistoryRules(
     val decodeUrl: Boolean get() = prefs.getBoolean(KEY_DECODE_URL, true)
     val wholeWordsOnly: Boolean get() = prefs.getBoolean(KEY_WHOLE_WORDS, false)
 
-    fun decide(uri: String, title: String? = null, searchTerm: String? = null): PrivateHistoryDecision {
+    fun decide(
+        uri: String,
+        title: String? = null,
+        searchTerm: String? = null,
+        includeTransientProtection: Boolean = true,
+    ): PrivateHistoryDecision {
         if (!enabled || uri.isBlank()) return PrivateHistoryDecision.ALLOW
-        if (temporaryProtectionActive()) return PrivateHistoryDecision(PrivateHistoryRule.Action.BLOCK)
+        if (includeTransientProtection &&
+            (temporaryProtectionActive() || PrivateHistoryTabProtection.isProtectedUri(uri))
+        ) {
+            return PrivateHistoryDecision(PrivateHistoryRule.Action.BLOCK)
+        }
 
         val rules = visualRules().filter(::isRuleActive)
         rules.firstOrNull { it.action == PrivateHistoryRule.Action.ALLOW && matchesRule(it, uri, title, searchTerm) }
@@ -70,6 +79,23 @@ class PrivateHistoryRules(
 
     fun shouldBlockVisit(uri: String, title: String? = null, searchTerm: String? = null): Boolean =
         decide(uri, title, searchTerm).suppressesOriginal
+
+    /** Whether a previously stored URL is old enough to be removed by the matched rule. */
+    fun shouldRemoveStoredVisit(
+        decision: PrivateHistoryDecision,
+        lastVisitAt: Long,
+        includeRestartRules: Boolean,
+    ): Boolean = when (decision.action) {
+        PrivateHistoryRule.Action.ALLOW -> false
+        PrivateHistoryRule.Action.BLOCK,
+        PrivateHistoryRule.Action.COLLAPSE_TO_ROOT,
+        -> true
+        PrivateHistoryRule.Action.FORGET_ON_RESTART -> includeRestartRules
+        PrivateHistoryRule.Action.FORGET_AFTER -> {
+            val retention = decision.matchedRule?.retentionMillis?.coerceAtLeast(MIN_RETENTION_MILLIS) ?: 0L
+            retention > 0L && lastVisitAt <= nowEpochMillis() - retention
+        }
+    }
 
     /**
      * Returns whether an open tab belongs to an explicitly enabled close-tab rule.
@@ -320,6 +346,7 @@ class PrivateHistoryRules(
 
     companion object {
         private const val MAX_URL_DECODE_PASSES = 3
+        private const val MIN_RETENTION_MILLIS = 60_000L
         private val DOMAIN_WILDCARD_PREFIX = Regex(
             """^([a-z][a-z0-9+.-]*://)?\*\.""",
             RegexOption.IGNORE_CASE,

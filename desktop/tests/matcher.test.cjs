@@ -15,9 +15,10 @@ const requiredOptionIds = [
   "metricTotal", "metricWeek", "openAddons", "previewClean", "pullEncryptedSync",
   "pushEncryptedSync", "queryParameterRow", "regex", "resetCounter", "ruleAction",
   "ruleClearCache", "ruleClearCookies", "ruleClearDownloads", "ruleCloseTab", "ruleExpiry",
-  "ruleMatcher", "ruleName", "ruleProfile", "ruleQueryParameter", "ruleValue", "save",
+  "ruleMatcher", "ruleName", "ruleProfile", "ruleQueryParameter", "ruleRetentionHours", "ruleValue", "save",
   "scrubEveryMinutes", "scrubOnStartup", "selfTest", "selfTestResult", "status", "syncRules",
-  "temporaryStatus", "test", "testResult", "testTitle", "testUrl", "updateCenter",
+  "temporaryStatus", "test", "testResult", "testTitle", "testUrl", "updateCenter", "showQr",
+  "qrDialog", "qrImage", "qrStatus", "retentionRow",
   "visualRuleList", "wholeWord",
 ];
 for (const id of requiredOptionIds) {
@@ -26,6 +27,17 @@ for (const id of requiredOptionIds) {
 const optionIds = [...optionsHtml.matchAll(/\bid=["']([^"']+)["']/g)].map((match) => match[1]);
 assert.equal(new Set(optionIds).size, optionIds.length, "options.html IDs must be unique");
 assert.match(optionsHtml, /<\/html>\s*$/, "options.html must be a complete document");
+
+const popupHtml = fs.readFileSync(
+  path.join(__dirname, "..", "firefox-extension", "popup.html"),
+  "utf8",
+);
+for (const id of [
+  "allowPage", "blockSite", "forget24", "forgetRestart", "keepHomepage", "pageAction",
+  "pageHost", "pageReason", "pageShield", "protectNext", "temp15", "temp60", "tempSession", "toggleTab",
+]) {
+  assert.match(popupHtml, new RegExp(`\\bid=["']${id}["']`), `popup.html must contain #${id}`);
+}
 
 function event() {
   const listeners = [];
@@ -37,6 +49,7 @@ function event() {
 }
 
 const state = {};
+const ephemeralState = {};
 const deleteCalls = [];
 const addCalls = [];
 const alarmPeriods = [];
@@ -44,8 +57,14 @@ const onVisited = event();
 const onCommitted = event();
 const onHistoryStateUpdated = event();
 const onTabUpdated = event();
+const onTabCreated = event();
+const onTabActivated = event();
+const onTabRemoved = event();
 const onStorageChanged = event();
 const onAlarm = event();
+const onMessage = event();
+const removedTabCalls = [];
+let queriedTabs = [];
 const browser = {
   permissions: {
     async contains() { return false; },
@@ -53,6 +72,11 @@ const browser = {
   },
   storage: {
     sync: { async get() { return {}; }, async set() {} },
+    session: {
+      async get(key) { return { [key]: ephemeralState[key] }; },
+      async set(patch) { Object.assign(ephemeralState, patch); },
+      async remove(key) { delete ephemeralState[key]; },
+    },
     local: {
       async get(defaults) { return { ...(defaults || {}), ...state }; },
       async set(patch) { Object.assign(state, patch); },
@@ -66,7 +90,15 @@ const browser = {
     async search() { return []; },
   },
   webNavigation: { onCommitted, onHistoryStateUpdated },
-  tabs: { onUpdated: onTabUpdated },
+  tabs: {
+    onUpdated: onTabUpdated,
+    onCreated: onTabCreated,
+    onActivated: onTabActivated,
+    onRemoved: onTabRemoved,
+    async query() { return queriedTabs; },
+    async get(tabId) { return queriedTabs.find((tab) => tab.id === tabId) || { id: tabId, url: "" }; },
+    async remove(ids) { removedTabCalls.push(...(Array.isArray(ids) ? ids : [ids])); },
+  },
   alarms: {
     async clear() {},
     create(_name, details) { alarmPeriods.push(details.periodInMinutes); },
@@ -75,8 +107,17 @@ const browser = {
   runtime: {
     onInstalled: event(),
     onStartup: event(),
-    onMessage: event(),
+    onMessage,
     getManifest() { return { version: "test" }; },
+  },
+  action: {
+    async setBadgeText() {},
+    async setBadgeBackgroundColor() {},
+    async setIcon() {},
+    async setTitle() {},
+  },
+  pageAction: {
+    async show() {}, async hide() {}, async setIcon() {}, async setTitle() {},
   },
 };
 
@@ -99,6 +140,22 @@ vm.runInContext(fs.readFileSync(background, "utf8"), context, { filename: backgr
 
 function settings(extra = {}) {
   return context.normalizeSettings({ enabled: true, ...extra });
+}
+
+const sharedFixtures = JSON.parse(fs.readFileSync(
+  path.join(__dirname, "..", "..", "shared", "rule-fixtures.json"),
+  "utf8",
+));
+for (const fixture of sharedFixtures.cases) {
+  const decision = context.decide(
+    fixture.url,
+    fixture.title,
+    settings({ visualRules: fixture.rules }),
+  );
+  assert.equal(decision.action, fixture.expectedAction, fixture.name);
+  if (fixture.expectedCollapsedUrl) {
+    assert.equal(decision.collapsedUrl, fixture.expectedCollapsedUrl, fixture.name);
+  }
 }
 
 assert.equal(context.shouldSuppress("https://example.com/a", "", settings({ domains: ["example.com"] })), true);
@@ -143,6 +200,28 @@ const allowExact = {
 assert.equal(context.shouldSuppress(
   "https://example.com/", "", settings({ domains: ["example.com"], visualRules: [allowExact] }),
 ), false);
+
+const forgetRestart = {
+  id: "restart", name: "Forget on restart", profile: "Default", matcher: "DOMAIN",
+  value: "temporary.example", action: "FORGET_ON_RESTART", enabled: true,
+};
+const forgetAfter = {
+  id: "after", name: "Forget after", profile: "Default", matcher: "DOMAIN",
+  value: "aging.example", action: "FORGET_AFTER", retentionMillis: 3600000, enabled: true,
+};
+assert.equal(context.shouldSuppress(
+  "https://temporary.example/page", "", settings({ visualRules: [forgetRestart] }),
+), false, "restart rules must leave the current session usable and stored");
+const restartDecision = context.decide(
+  "https://temporary.example/page", "", settings({ visualRules: [forgetRestart] }),
+);
+assert.equal(context.shouldRemoveStoredVisit(restartDecision, Date.now(), { includeSessionRules: false }), false);
+assert.equal(context.shouldRemoveStoredVisit(restartDecision, Date.now(), { includeSessionRules: true }), true);
+const afterDecision = context.decide(
+  "https://aging.example/page", "", settings({ visualRules: [forgetAfter] }),
+);
+assert.equal(context.shouldRemoveStoredVisit(afterDecision, Date.now() - 7200000), true);
+assert.equal(context.shouldRemoveStoredVisit(afterDecision, Date.now() - 1000), false);
 
 async function runIntegration() {
   // Let immediate background initialization finish before simulating user input.
@@ -190,6 +269,99 @@ async function runIntegration() {
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
   assert.ok(addCalls.includes("https://www.sitoacaso.it/"), "collapse rule should add only the site root");
+
+  const restoredOnly = {
+    id: "restored", name: "Restored only", profile: "Default", matcher: "DOMAIN",
+    value: "restore.example", action: "BLOCK", enabled: true, closeTab: true,
+  };
+  await context.persistSettings(settings({ visualRules: [restoredOnly] }));
+  const removedBeforeLiveVisit = removedTabCalls.length;
+  await context.applyDecision("https://restore.example/live", "", { tabId: 44 });
+  assert.equal(
+    removedTabCalls.length,
+    removedBeforeLiveVisit,
+    "a close-tab rule must never close a matching live tab",
+  );
+  queriedTabs = [
+    { id: 44, url: "https://restore.example/restored", title: "Restored" },
+    { id: 45, url: "https://safe.example/", title: "Safe" },
+  ];
+  let startupQuery = true;
+  browser.tabs.query = async () => {
+    if (startupQuery) {
+      startupQuery = false;
+      return queriedTabs;
+    }
+    return [...queriedTabs, { id: 46, url: "https://restore.example/live", title: "Live" }];
+  };
+  assert.equal(await context.closeRestoredMatchingTabs(await context.getSettings()), 1);
+  assert.ok(removedTabCalls.includes(44), "matching restored tab should close on the next startup pass");
+  assert.equal(removedTabCalls.includes(45), false);
+  assert.equal(removedTabCalls.includes(46), false, "a tab opened after startup capture must stay open");
+  browser.tabs.query = async () => queriedTabs;
+
+  await context.toggleTabShield(50, "https://parent.example/", { inherit: true });
+  onTabCreated.emit({ id: 51, openerTabId: 50, url: "https://child.example/" });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    context.decide("https://child.example/", "", await context.getSettings(), { tabId: 51 }).action,
+    "BLOCK",
+    "child tabs should inherit an explicitly inheriting tab shield",
+  );
+
+  const messageListener = onMessage.listeners[0];
+  await messageListener({ type: "protect-next-navigation", tabId: 60, url: "https://start.example/" });
+  await context.advanceOneShot(60, "https://next.example/private");
+  assert.equal(
+    context.decide("https://next.example/private", "", await context.getSettings(), { tabId: 60 }).action,
+    "BLOCK",
+    "the armed next navigation should be shielded",
+  );
+  assert.ok(
+    ephemeralState.privacyStudioEphemeralV3.oneShots.some(([tabId]) => tabId === 60),
+    "one-shot state should survive Manifest V3 event-page suspension in memory-only storage",
+  );
+  vm.runInContext(
+    "sessionPrivateTabs.clear(); inheritingPrivateTabs.clear(); oneShotTabs.clear(); "
+      + "sessionBlockAll = false; ephemeralStateLoaded = false; ephemeralStateLoad = null;",
+    context,
+  );
+  await context.ensureEphemeralState();
+  assert.equal(
+    context.decide("https://next.example/private", "", await context.getSettings(), { tabId: 60 }).action,
+    "BLOCK",
+    "memory-only session state should rehydrate after an event-page restart",
+  );
+
+  await context.persistSettings(settings({ visualRules: [], domains: [], keywords: [], regex: [] }));
+  browser.history.search = async () => [
+    { url: "https://safe.example/old", title: "Safe", lastVisitTime: 1 },
+  ];
+  await messageListener({ type: "temporary-mode", mode: "session" });
+  const deleteCountBeforeTemporaryScrub = deleteCalls.length;
+  const temporaryScrub = await context.scrubAllHistory({ includeSessionRules: true });
+  assert.equal(temporaryScrub.removed, 0, "a live session shield must not match older clean history");
+  assert.equal(deleteCalls.length, deleteCountBeforeTemporaryScrub);
+  await messageListener({ type: "temporary-mode", mode: "off" });
+
+  await context.persistSettings(settings({
+    scrubOnStartup: false,
+    domains: ["immediate.example"],
+    visualRules: [forgetRestart],
+  }));
+  browser.history.search = async () => [
+    { url: "https://temporary.example/old", title: "Restart", lastVisitTime: 2 },
+    { url: "https://immediate.example/old", title: "Immediate", lastVisitTime: 1 },
+  ];
+  const deleteCountBeforeRestartOnly = deleteCalls.length;
+  const restartOnly = await context.scrubAllHistory({ includeSessionRules: true, restartOnly: true });
+  assert.equal(restartOnly.removed, 1, "restart rules must run even when ordinary startup scrubbing is off");
+  assert.deepEqual(
+    deleteCalls.slice(deleteCountBeforeRestartOnly),
+    ["https://temporary.example/old"],
+    "the mandatory restart pass must not broaden a disabled startup scrub",
+  );
 
   const encrypted = await context.encryptRuleBundle(
     settings({ visualRules: [collapseHomepage], activeProfiles: ["Default"] }),

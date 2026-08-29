@@ -169,6 +169,129 @@ def patch_history_metadata(target: Path) -> None:
     write(path, s)
 
 
+def patch_toolbar(target: Path) -> None:
+    """Add a native contextual shield button without introducing omnibox commands."""
+    path = target / "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/components/toolbar/BrowserToolbarMiddleware.kt"
+    s = read(path)
+
+    anchor = "import org.mozilla.fenix.settings.ShortcutType\n"
+    imports = (
+        "import org.mozilla.fenix.privacyhistory.PrivateHistoryRule\n"
+        "import org.mozilla.fenix.privacyhistory.PrivateHistoryRules\n"
+        "import org.mozilla.fenix.privacyhistory.PrivateHistoryTabProtection\n"
+        "import org.mozilla.fenix.privacyhistory.PrivateHistoryToolbarController\n"
+        + anchor
+    )
+    s = replace_once(s, anchor, imports, "Toolbar privacy imports")
+
+    event_anchor = (
+        "    data class ReaderModeClicked(\n"
+        "        val isActive: Boolean,\n"
+        "    ) : PageEndActionsInteractions(Source.AddressBar.PageEnd)\n"
+        "}\n\ninternal object BrowserToolbarTestTags"
+    )
+    event_replacement = (
+        "    data class ReaderModeClicked(\n"
+        "        val isActive: Boolean,\n"
+        "    ) : PageEndActionsInteractions(Source.AddressBar.PageEnd)\n"
+        "    data object PrivacyShieldClicked : PageEndActionsInteractions(Source.AddressBar.PageEnd)\n"
+        "    data object PrivacyShieldLongClicked : PageEndActionsInteractions(Source.AddressBar.PageEnd)\n"
+        "}\n\ninternal object BrowserToolbarTestTags"
+    )
+    s = replace_once(s, event_anchor, event_replacement, "Toolbar shield events")
+
+    reader_case = "            is ReaderModeClicked -> {\n"
+    privacy_cases = (
+        "            is PageEndActionsInteractions.PrivacyShieldClicked -> {\n"
+        "                PrivateHistoryToolbarController(\n"
+        "                    context = uiContext,\n"
+        "                    browserStore = browserStore,\n"
+        "                    openStudio = { navController.navigate(R.id.privateHistoryFragment) },\n"
+        "                    onChanged = { updateEndPageActions(store) },\n"
+        "                ).show()\n"
+        "                next(action)\n"
+        "            }\n"
+        "            is PageEndActionsInteractions.PrivacyShieldLongClicked -> {\n"
+        "                PrivateHistoryToolbarController(\n"
+        "                    context = uiContext,\n"
+        "                    browserStore = browserStore,\n"
+        "                    openStudio = { navController.navigate(R.id.privateHistoryFragment) },\n"
+        "                    onChanged = { updateEndPageActions(store) },\n"
+        "                ).toggleCurrentTab()\n"
+        "                next(action)\n"
+        "            }\n\n"
+        + reader_case
+    )
+    s = replace_once(s, reader_case, privacy_cases, "Toolbar shield interaction handling")
+
+    page_actions = "        return listOf(\n            ToolbarActionConfig(ToolbarAction.ReaderMode) {"
+    s = replace_once(
+        s,
+        page_actions,
+        "        return listOf(\n"
+        "            ToolbarActionConfig(ToolbarAction.PrivacyShield),\n"
+        "            ToolbarActionConfig(ToolbarAction.ReaderMode) {",
+        "Toolbar shield page action",
+    )
+
+    observer_anchor = (
+        "            distinctUntilChangedBy { it.selectedTab?.content?.url }\n"
+        "            .collect {\n"
+        "                updateCurrentPageOrigin(store)\n"
+    )
+    observer_replacement = (
+        "            distinctUntilChangedBy { it.selectedTab?.content?.url }\n"
+        "            .collect { state ->\n"
+        "                state.selectedTab?.let { tab ->\n"
+        "                    PrivateHistoryTabProtection.onNavigation(tab.id, tab.parentId, tab.content.url)\n"
+        "                }\n"
+        "                updateCurrentPageOrigin(store)\n"
+        "                updateEndPageActions(store)\n"
+    )
+    s = replace_once(s, observer_anchor, observer_replacement, "Toolbar tab protection navigation")
+
+    tabs_anchor = (
+        "            distinctUntilChangedBy { it.tabs.size }\n"
+        "            .collect {\n"
+        "                updateEndBrowserActions(store)\n"
+    )
+    tabs_replacement = (
+        "            distinctUntilChangedBy { it.tabs.size }\n"
+        "            .collect { state ->\n"
+        "                state.tabs.forEach { tab ->\n"
+        "                    PrivateHistoryTabProtection.onNavigation(tab.id, tab.parentId, tab.content.url)\n"
+        "                }\n"
+        "                PrivateHistoryTabProtection.prune(state.tabs.map { it.id }.toSet())\n"
+        "                updateEndBrowserActions(store)\n"
+    )
+    s = replace_once(s, tabs_anchor, tabs_replacement, "Toolbar tab protection cleanup")
+
+    enum_anchor = "        Menu,\n        ReaderMode,\n"
+    s = replace_once(s, enum_anchor, "        Menu,\n        PrivacyShield,\n        ReaderMode,\n", "Toolbar shield enum")
+
+    action_anchor = "        ToolbarAction.ReaderMode -> ActionButtonRes(\n"
+    action_replacement = (
+        "        ToolbarAction.PrivacyShield -> {\n"
+        "            val tab = browserStore.state.selectedTab\n"
+        "            val decision = tab?.let { PrivateHistoryRules(uiContext).decide(it.content.url, it.content.title) }\n"
+        "            ActionButtonRes(\n"
+        "                drawableResId = R.drawable.ic_fenix_privacy_shield,\n"
+        "                contentDescription = R.string.private_history_toolbar_description,\n"
+        "                state = if (tab != null && (\n"
+        "                    PrivateHistoryTabProtection.isTabProtected(tab.id) ||\n"
+        "                        decision?.action != PrivateHistoryRule.Action.ALLOW\n"
+        "                )) ActionButton.State.ACTIVE else ActionButton.State.DEFAULT,\n"
+        "                onClick = PageEndActionsInteractions.PrivacyShieldClicked,\n"
+        "                onLongClick = PageEndActionsInteractions.PrivacyShieldLongClicked,\n"
+        "                testTag = \"browser.toolbar.fenix.privacy.shield\",\n"
+        "            )\n"
+        "        }\n\n"
+        + action_anchor
+    )
+    s = replace_once(s, action_anchor, action_replacement, "Toolbar shield action")
+    write(path, s)
+
+
 def patch_settings(target: Path) -> None:
     path = target / "mobile/android/fenix/app/src/main/java/org/mozilla/fenix/settings/SettingsFragment.kt"
     s = read(path)
@@ -339,6 +462,7 @@ def main() -> None:
     copy_overlay(target)
     patch_core(target)
     patch_history_metadata(target)
+    patch_toolbar(target)
     patch_settings(target)
     patch_application(target)
     patch_manifest(target)

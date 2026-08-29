@@ -19,6 +19,7 @@ data class PrivateHistoryRule(
     val action: Action = Action.BLOCK,
     val enabled: Boolean = true,
     val expiresAtEpochMillis: Long = 0L,
+    val retentionMillis: Long = 0L,
     val clearCookies: Boolean = false,
     val clearCache: Boolean = false,
     val clearDownloads: Boolean = false,
@@ -40,6 +41,7 @@ data class PrivateHistoryRule(
         put("action", action.name)
         put("enabled", enabled)
         put("expiresAtEpochMillis", expiresAtEpochMillis)
+        put("retentionMillis", retentionMillis)
         put("clearCookies", clearCookies)
         put("clearCache", clearCache)
         put("clearDownloads", clearDownloads)
@@ -61,6 +63,8 @@ data class PrivateHistoryRule(
         ALLOW,
         BLOCK,
         COLLAPSE_TO_ROOT,
+        FORGET_AFTER,
+        FORGET_ON_RESTART,
     }
 
     companion object {
@@ -90,6 +94,7 @@ data class PrivateHistoryRule(
                             action = action,
                             enabled = item.optBoolean("enabled", true),
                             expiresAtEpochMillis = item.optLong("expiresAtEpochMillis", 0L),
+                            retentionMillis = item.optLong("retentionMillis", 0L).coerceAtLeast(0L),
                             clearCookies = item.optBoolean("clearCookies", false),
                             clearCache = item.optBoolean("clearCache", false),
                             clearDownloads = item.optBoolean("clearDownloads", false),
@@ -112,7 +117,12 @@ data class PrivateHistoryDecision(
     val matchedRule: PrivateHistoryRule? = null,
 ) {
     val suppressesOriginal: Boolean
-        get() = action != PrivateHistoryRule.Action.ALLOW
+        get() = action == PrivateHistoryRule.Action.BLOCK ||
+            action == PrivateHistoryRule.Action.COLLAPSE_TO_ROOT
+
+    val isDelayed: Boolean
+        get() = action == PrivateHistoryRule.Action.FORGET_AFTER ||
+            action == PrivateHistoryRule.Action.FORGET_ON_RESTART
 
     companion object {
         val ALLOW = PrivateHistoryDecision(PrivateHistoryRule.Action.ALLOW)

@@ -22,6 +22,9 @@ class PrivateHistoryDelegate(
         val decision = rules.decide(uri)
         when (decision.action) {
             PrivateHistoryRule.Action.ALLOW -> historyStorage.value.recordVisit(uri, visit)
+            PrivateHistoryRule.Action.FORGET_AFTER,
+            PrivateHistoryRule.Action.FORGET_ON_RESTART,
+            -> historyStorage.value.recordVisit(uri, visit)
             PrivateHistoryRule.Action.BLOCK -> purgeUri(uri)
             PrivateHistoryRule.Action.COLLAPSE_TO_ROOT -> {
                 val target = decision.collapsedUri
@@ -42,6 +45,9 @@ class PrivateHistoryDelegate(
         when (decision.action) {
             PrivateHistoryRule.Action.ALLOW ->
                 historyStorage.value.recordObservation(uri, PageObservation(title = title))
+            PrivateHistoryRule.Action.FORGET_AFTER,
+            PrivateHistoryRule.Action.FORGET_ON_RESTART,
+            -> historyStorage.value.recordObservation(uri, PageObservation(title = title))
             PrivateHistoryRule.Action.BLOCK -> {
                 stats.recordRemovedAfterMatch(uri)
                 purgeUri(uri)
@@ -77,6 +83,9 @@ class PrivateHistoryDelegate(
         val decision = rules.decide(uri)
         return when (decision.action) {
             PrivateHistoryRule.Action.ALLOW -> historyStorage.value.canAddUri(uri)
+            PrivateHistoryRule.Action.FORGET_AFTER,
+            PrivateHistoryRule.Action.FORGET_ON_RESTART,
+            -> historyStorage.value.canAddUri(uri)
             PrivateHistoryRule.Action.BLOCK -> {
                 stats.recordPreventedBeforeWrite(uri)
                 // Gecko calls this before onVisited. Remove older/synced visits too.

@@ -72,6 +72,7 @@ async function save(showMessage = true) {
 function renderRules() {
   const host = $("visualRuleList");
   host.textContent = "";
+  renderRuleWarnings();
   if (!visualRules.length) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
@@ -103,6 +104,34 @@ function renderRules() {
   }
 }
 
+function renderRuleWarnings() {
+  const host = $("ruleWarnings");
+  host.textContent = "";
+  const active = visualRules.filter((rule) => rule.enabled !== false && (!rule.expiresAtEpochMillis || rule.expiresAtEpochMillis > Date.now()));
+  const groups = new Map();
+  for (const rule of active) {
+    const key = `${rule.profile || "Default"}\u0000${rule.matcher}\u0000${String(rule.value || "").trim().toLocaleLowerCase()}\u0000${String(rule.queryParameter || "").trim().toLocaleLowerCase()}`;
+    groups.set(key, [...(groups.get(key) || []), rule]);
+  }
+  const warnings = [];
+  for (const rules of groups.values()) {
+    if (rules.length < 2) continue;
+    const actions = new Set(rules.map((rule) => rule.action));
+    warnings.push(actions.size > 1
+      ? `Conflict: ${rules.map((rule) => rule.name).join(", ")} match the same target. ALLOW wins; otherwise the first active rule wins.`
+      : `Duplicate: ${rules.map((rule) => rule.name).join(", ")} perform the same action on the same target.`);
+  }
+  if (!warnings.length) return;
+  const title = document.createElement("strong");
+  title.textContent = `${warnings.length} rule warning${warnings.length === 1 ? "" : "s"}`;
+  host.appendChild(title);
+  for (const warning of warnings) {
+    const item = document.createElement("p");
+    item.textContent = warning;
+    host.appendChild(item);
+  }
+}
+
 function resetBuilder() {
   editingId = null;
   $("ruleName").value = "";
@@ -111,10 +140,11 @@ function resetBuilder() {
   $("ruleValue").value = "";
   $("ruleQueryParameter").value = "";
   $("ruleAction").value = "BLOCK";
+  $("ruleRetentionHours").value = "24";
   $("ruleExpiry").value = "";
   for (const id of ["ruleClearCookies", "ruleClearCache", "ruleClearDownloads", "ruleCloseTab"]) $(id).checked = false;
   $("cancelEdit").hidden = true;
-  updateQueryVisibility();
+  updateBuilderVisibility();
 }
 
 function builderRule() {
@@ -127,6 +157,8 @@ function builderRule() {
     value: $("ruleValue").value.trim(),
     queryParameter: $("ruleQueryParameter").value.trim(),
     action: $("ruleAction").value,
+    retentionMillis: $("ruleAction").value === "FORGET_AFTER"
+      ? Math.max(60000, Math.round(Number($("ruleRetentionHours").value || 24) * 3600000)) : 0,
     enabled: true,
     expiresAtEpochMillis: minutes > 0 ? Date.now() + Math.min(minutes, 525600) * 60000 : 0,
     clearCookies: $("ruleClearCookies").checked,
@@ -144,6 +176,8 @@ function editRule(rule) {
   $("ruleValue").value = rule.value || "";
   $("ruleQueryParameter").value = rule.queryParameter || "";
   $("ruleAction").value = rule.action;
+  $("ruleRetentionHours").value = rule.retentionMillis > 0
+    ? Math.max(0.0167, Number(rule.retentionMillis) / 3600000) : 24;
   $("ruleExpiry").value = rule.expiresAtEpochMillis > Date.now()
     ? Math.max(1, Math.round((rule.expiresAtEpochMillis - Date.now()) / 60000)) : "";
   $("ruleClearCookies").checked = Boolean(rule.clearCookies);
@@ -151,12 +185,13 @@ function editRule(rule) {
   $("ruleClearDownloads").checked = Boolean(rule.clearDownloads);
   $("ruleCloseTab").checked = Boolean(rule.closeTab);
   $("cancelEdit").hidden = false;
-  updateQueryVisibility();
+  updateBuilderVisibility();
   $("ruleName").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-function updateQueryVisibility() {
+function updateBuilderVisibility() {
   $("queryParameterRow").hidden = $("ruleMatcher").value !== "QUERY_PARAMETER";
+  $("retentionRow").hidden = $("ruleAction").value !== "FORGET_AFTER";
 }
 
 async function refreshDashboard() {
@@ -186,7 +221,8 @@ async function load() {
   await refreshDashboard();
 }
 
-$("ruleMatcher").addEventListener("change", updateQueryVisibility);
+$("ruleMatcher").addEventListener("change", updateBuilderVisibility);
+$("ruleAction").addEventListener("change", updateBuilderVisibility);
 $("cancelEdit").addEventListener("click", resetBuilder);
 $("addRule").addEventListener("click", async () => {
   try {
@@ -230,6 +266,8 @@ $("test").addEventListener("click", async () => {
     });
     $("testResult").textContent = result.action === "ALLOW" ? "✅ Saved normally"
       : result.action === "COLLAPSE_TO_ROOT" ? `🏠 Only ${result.collapsedUrl} will be saved`
+        : result.action === "FORGET_ON_RESTART" ? "⏻ Saved for this run, then forgotten at next start"
+          : result.action === "FORGET_AFTER" ? "⏱ Saved temporarily, then forgotten"
         : `🛡️ Blocked${result.ruleName ? ` by ${result.ruleName}` : ""}`;
   } catch (error) { $("testResult").textContent = `Error: ${error?.message || error}`; }
 });
@@ -274,6 +312,24 @@ $("exportEncrypted").addEventListener("click", async () => {
     const a = document.createElement("a"); a.href = url; a.download = "fenix-privacy-rules.fprules"; a.click();
     URL.revokeObjectURL(url); $("backupPassphrase").value = ""; status("Encrypted Android-compatible bundle exported.");
   } catch (error) { showError(error); }
+});
+
+$("showQr").addEventListener("click", async () => {
+  try {
+    await save(false);
+    $("qrStatus").textContent = "Encrypting and generating locally…";
+    $("qrImage").removeAttribute("src");
+    $("qrDialog").showModal();
+    const result = await browser.runtime.sendMessage({ type: "export-encrypted", passphrase: passphrase() });
+    const qr = qrcode(0, "M");
+    qr.addData(result.bundle, "Byte");
+    qr.make();
+    $("qrImage").src = qr.createDataURL(5, 16);
+    $("qrStatus").textContent = "Ready. The passphrase is not in the QR.";
+    $("backupPassphrase").value = "";
+  } catch (error) {
+    $("qrStatus").textContent = `QR unavailable: ${error?.message || error}. Use the encrypted file for large rule sets.`;
+  }
 });
 
 $("importEncrypted").addEventListener("change", async (event) => {

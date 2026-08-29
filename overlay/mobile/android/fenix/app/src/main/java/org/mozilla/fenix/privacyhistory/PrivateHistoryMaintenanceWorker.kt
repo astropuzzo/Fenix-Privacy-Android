@@ -29,7 +29,9 @@ class PrivateHistoryMaintenanceWorker(
                 app.components.core.historyStorage,
                 PrivateHistoryRules(applicationContext),
                 app.components.core.privateHistoryStats,
-            ).purgeMatchingHistory()
+            ).purgeMatchingHistory(
+                includeRestartRules = inputData.getBoolean(KEY_CLOSE_RESTORED_TABS, false),
+            )
             if (inputData.getBoolean(KEY_CLOSE_RESTORED_TABS, false)) {
                 app.components.core.privateHistoryActionExecutor.closeRestoredTabs()
             }
