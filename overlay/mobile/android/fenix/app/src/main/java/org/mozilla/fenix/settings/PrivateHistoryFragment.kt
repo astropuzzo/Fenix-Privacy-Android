@@ -439,10 +439,15 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
                 withContext(Dispatchers.IO) { passwordManager().setProtected(login, protected) }
             }.fold(
                 onSuccess = {
+                    val message = if (protected) {
+                        R.string.private_password_manager_private_ready
+                    } else {
+                        R.string.private_password_manager_updated
+                    }
                     Toast.makeText(
                         requireContext(),
-                        R.string.private_password_manager_updated,
-                        Toast.LENGTH_SHORT,
+                        message,
+                        if (protected) Toast.LENGTH_LONG else Toast.LENGTH_SHORT,
                     ).show()
                     showPasswordManager()
                 },

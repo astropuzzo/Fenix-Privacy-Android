@@ -159,6 +159,7 @@
     <string name="private_password_manager_password">Password</string>
     <string name="private_password_manager_save">Salva</string>
     <string name="private_password_manager_updated">Password salvata aggiornata</string>
+    <string name="private_password_manager_private_ready">Accesso riservato attivo. Sul sito, tieni premuto “Sblocca le password salvate”.</string>
     <string name="private_password_manager_deleted">Password salvata eliminata</string>
     <string name="private_password_manager_failed">Impossibile aggiornare la password salvata</string>
     <string name="private_password_manager_http_unsupported">L’accesso riservato supporta i moduli dei siti, non le finestre di autenticazione HTTP</string>
