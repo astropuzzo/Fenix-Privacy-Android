@@ -368,6 +368,17 @@ jobs:
             --tests 'org.mozilla.fenix.privacyhistory.*' \
             --tests 'org.mozilla.fenix.historymetadata.PrivateHistoryMetadataSuppressionTest'
 
+          ./mach gradle \
+            --no-daemon \
+            --no-parallel \
+            --max-workers=1 \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            -Dorg.gradle.vfs.watch=false \
+            "-Dorg.gradle.jvmargs=-Xmx4608m -Xms1g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC" \
+            -p mobile/android/fenix/app \
+            :components:feature-prompts:testDebugUnitTest \
+            --tests 'mozilla.components.feature.prompts.login.LoginPickerTest'
+
       - name: Build unsigned ARM64 release APK
         if: steps.decision.outputs.build == 'true'
         working-directory: upstream

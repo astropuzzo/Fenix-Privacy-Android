@@ -31,6 +31,7 @@ jobs:
             "fix/automatic-build-artifacts"
             "fix/defer-tab-closure"
             "fix/privacy-runtime-logic"
+            "fix/password-unlock-action"
             "fix/reliable-signed-builds"
             "fix/restored-tab-closure"
             "fix/webext-self-hosted-lint"

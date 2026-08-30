@@ -13,13 +13,36 @@ import org.junit.Test
 class PrivatePasswordAccessTest {
     @Test
     fun `locked action exposes no credential metadata`() {
-        val locked = PrivatePasswordAccess.lockedLogin("accounts.example")
+        val locked = PrivatePasswordAccess.lockedLogins(
+            "accounts.example",
+            listOf(
+                "https://unrelated.example/path",
+                "https://login.accounts.example:8443/path?ignored=true",
+            ),
+        )
 
-        assertEquals("https://passwords.invalid", locked.origin)
-        assertEquals("", locked.username)
-        assertEquals("", locked.password)
-        assertEquals("accounts.example", locked.formActionOrigin)
-        assertTrue(PrivatePasswordAccess.isLockedLogin(locked))
+        assertEquals(
+            listOf(
+                "https://login.accounts.example:8443",
+                "https://accounts.example",
+                "http://accounts.example",
+            ),
+            locked.map(Login::origin),
+        )
+        assertTrue(locked.all { it.username == "Passwords" })
+        assertTrue(locked.all { it.password == "locked" })
+        assertTrue(locked.all { it.formActionOrigin == null })
+        assertTrue(locked.all(PrivatePasswordAccess::isLockedLogin))
+        assertTrue(locked.all { PrivatePasswordAccess.lockedLookupDomain(it) == "accounts.example" })
+    }
+
+    @Test
+    fun `web origin normalization strips paths and default ports`() {
+        assertEquals(
+            "https://accounts.example",
+            PrivatePasswordAccess.normalizeWebOrigin("HTTPS://Accounts.Example:443/login"),
+        )
+        assertEquals(null, PrivatePasswordAccess.normalizeWebOrigin("file:///tmp/login"))
     }
 
     @Test

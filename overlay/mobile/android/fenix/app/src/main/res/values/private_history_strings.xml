@@ -160,6 +160,7 @@
     <string name="private_password_manager_password">Password</string>
     <string name="private_password_manager_save">Save</string>
     <string name="private_password_manager_updated">Saved password updated</string>
+    <string name="private_password_manager_private_ready">Private access enabled. On the website, long-press “Unlock saved passwords”.</string>
     <string name="private_password_manager_deleted">Saved password deleted</string>
     <string name="private_password_manager_failed">The saved password could not be updated</string>
     <string name="private_password_manager_http_unsupported">Private access currently supports website forms, not HTTP authentication dialogs</string>

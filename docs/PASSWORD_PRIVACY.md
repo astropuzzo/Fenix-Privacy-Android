@@ -11,7 +11,7 @@ Password Sync is enabled.
 
 | Data | Before strong biometric | Recovery |
 | --- | --- | --- |
-| Standard credentials | No origin, username, password or count is read or rendered | Firefox Accounts Password Sync |
+| Standard credentials | No saved origin, real username, real password or count is read or rendered | Firefox Accounts Password Sync |
 | Private credentials | Omitted from ordinary lists, searches and external Android Autofill | Firefox Accounts Password Sync, including the private marker |
 | History rules | Rule details remain behind strong biometric | Encrypted `.fprules` export/import |
 | Desktop native password list | Not controlled by the current WebExtension | Requires a privileged/native Firefox Desktop build |
@@ -55,7 +55,8 @@ authentication cache is disabled.
 
 ## Security invariants
 
-- Gecko receives only a transient, metadata-free action before authentication.
+- Gecko receives only a transient action before authentication: the already-known current form
+  origin and fixed non-secret placeholders. It receives no saved-login metadata.
 - Real records are queried only after authentication and only for the current origin.
 - Standard and private result sets are mutually exclusive.
 - Internal private metadata is stripped before an authenticated credential reaches Gecko.
