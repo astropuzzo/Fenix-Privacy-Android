@@ -6,6 +6,8 @@ Version 3.0 adds a native URL-bar shield with current-page status and quick acti
 
 ## Privacy model
 
+This WebExtension cannot access Firefox's native saved-password database or filter `about:logins`. It does not implement the Android private-password tier and must not be treated as a Desktop password-security boundary. Private classification can travel with a synchronized credential, but an unmodified Desktop Firefox ignores that marker and may display the credential. Equivalent enforcement requires a privileged Firefox Desktop build, not an XPI.
+
 The extension does not transmit browsing data or rules to a developer-controlled server. Rules stay local by default. The user can explicitly push a password-encrypted bundle to `storage.sync`; Firefox first presents its built-in data-transmission consent. The passphrase is never stored or synchronized. Android imports and exports the same `.fprules` format, because native Fenix settings cannot directly read WebExtension `storage.sync`.
 
 Cookies, logins, sessions, cache and downloads remain untouched unless an optional action is explicitly enabled on one visual rule and the corresponding Firefox permission is granted. A `closeTab` option affects matching restored tabs only at the next Firefox start; it never closes the page being used.

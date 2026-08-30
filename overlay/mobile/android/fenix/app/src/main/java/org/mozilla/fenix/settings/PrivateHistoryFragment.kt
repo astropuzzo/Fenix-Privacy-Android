@@ -10,6 +10,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
+import android.view.WindowManager
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -25,6 +26,7 @@ import java.util.Date
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import mozilla.components.concept.storage.Login
 import mozilla.components.feature.qr.QrScanActivity
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.menu.share.QRCodeGenerator
@@ -41,11 +43,14 @@ import org.mozilla.fenix.privacyhistory.PrivateHistoryRules
 import org.mozilla.fenix.privacyhistory.PrivateHistorySelfTest
 import org.mozilla.fenix.privacyhistory.PrivateHistoryStats
 import org.mozilla.fenix.privacyhistory.PrivateHistoryUpdateInfo
+import org.mozilla.fenix.privacyhistory.PrivatePasswordManager
+import org.mozilla.fenix.privacyhistory.PrivatePasswordMetadata
 
 /** Privacy Studio: visual rules, diagnostics, encrypted transfer and selective-history controls. */
 class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFragment {
     private var pendingExportPassphrase: CharArray? = null
     private var unlockedThisSession = false
+    private var sensitiveDialog: AlertDialog? = null
 
     private val exportLauncher = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream"),
@@ -126,6 +131,10 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
             showTemporaryModes()
             true
         }
+        findPreference<Preference>(KEY_PASSWORD_MANAGER)?.setOnPreferenceClickListener {
+            showPasswordManager()
+            true
+        }
         findPreference<Preference>(KEY_BACKUP_EXPORT)?.setOnPreferenceClickListener {
             showPassphraseDialog(R.string.private_history_backup_export_title) { passphrase ->
                 pendingExportPassphrase = passphrase
@@ -190,15 +199,26 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
             authenticate { success ->
                 unlockedThisSession = success
                 preferenceScreen.isEnabled = success
-                if (!success) findNavController().popBackStack()
+                if (success) {
+                    requireActivity().window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                } else {
+                    findNavController().popBackStack()
+                }
             }
         }
     }
 
     override fun onPause() {
+        sensitiveDialog?.dismiss()
+        sensitiveDialog = null
         unlockedThisSession = false
         FenixPrivacyUpdater.schedule(requireContext())
         super.onPause()
+    }
+
+    override fun onDestroyView() {
+        activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        super.onDestroyView()
     }
 
     private fun rules() = PrivateHistoryRules(requireContext())
@@ -330,6 +350,210 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
             )
             else -> getString(R.string.private_history_temporary_off)
         }
+    }
+
+
+    private fun passwordManager() = PrivatePasswordManager(
+        requireComponents.core.passwordsStorage,
+        rules(),
+    )
+
+    private fun showPasswordManager() {
+        val preference = findPreference<Preference>(KEY_PASSWORD_MANAGER) ?: return
+        preference.isEnabled = false
+        preference.summary = getString(R.string.private_password_manager_loading)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { passwordManager().listForManagement() }
+            }
+            preference.isEnabled = true
+            preference.summary = getString(R.string.private_password_manager_summary)
+            result.fold(
+                onSuccess = { logins ->
+                    if (logins.isEmpty()) {
+                        Toast.makeText(
+                            requireContext(),
+                            R.string.private_password_manager_empty,
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        return@fold
+                    }
+                    val labels = logins.map { login ->
+                        val access = if (PrivatePasswordMetadata.isProtected(login)) {
+                            getString(R.string.private_password_manager_private)
+                        } else {
+                            getString(R.string.private_password_manager_standard)
+                        }
+                        "${login.origin}\n${login.username.ifBlank { "—" }} · $access"
+                    }.toTypedArray()
+                    showSensitiveDialog(
+                        AlertDialog.Builder(requireContext())
+                            .setTitle(R.string.private_password_manager_dialog_title)
+                            .setItems(labels) { _, index -> showPasswordActions(logins[index]) }
+                            .setNegativeButton(android.R.string.cancel, null)
+                            .create(),
+                    )
+                },
+                onFailure = { showToast(R.string.private_password_manager_failed) },
+            )
+        }
+    }
+
+    private fun showPasswordActions(login: Login) {
+        val toggle = if (PrivatePasswordMetadata.isProtected(login)) {
+            getString(R.string.private_password_manager_make_standard)
+        } else {
+            getString(R.string.private_password_manager_make_private)
+        }
+        val actions = arrayOf(
+            toggle,
+            getString(R.string.private_password_manager_edit),
+            getString(R.string.private_password_manager_delete),
+        )
+        showSensitiveDialog(
+            AlertDialog.Builder(requireContext())
+                .setTitle(login.origin)
+                .setItems(actions) { _, which ->
+                    when (which) {
+                        0 -> setPasswordProtection(login, !PrivatePasswordMetadata.isProtected(login))
+                        1 -> showPasswordEditor(login)
+                        2 -> confirmPasswordDeletion(login)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create(),
+        )
+    }
+
+    private fun setPasswordProtection(login: Login, protected: Boolean) {
+        if (protected && !PrivatePasswordMetadata.canProtect(login)) {
+            Toast.makeText(
+                requireContext(),
+                R.string.private_password_manager_http_unsupported,
+                Toast.LENGTH_LONG,
+            ).show()
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { passwordManager().setProtected(login, protected) }
+            }.fold(
+                onSuccess = {
+                    Toast.makeText(
+                        requireContext(),
+                        R.string.private_password_manager_updated,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    showPasswordManager()
+                },
+                onFailure = { showToast(R.string.private_password_manager_failed) },
+            )
+        }
+    }
+
+    private fun showPasswordEditor(login: Login) {
+        val density = resources.displayMetrics.density
+        val layout = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((20 * density).toInt(), 0, (20 * density).toInt(), 0)
+        }
+        val origin = EditText(requireContext()).apply {
+            hint = getString(R.string.private_password_manager_site)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setText(login.origin)
+        }
+        val username = EditText(requireContext()).apply {
+            hint = getString(R.string.private_password_manager_username)
+            inputType = InputType.TYPE_CLASS_TEXT
+            setText(login.username)
+        }
+        val password = EditText(requireContext()).apply {
+            hint = getString(R.string.private_password_manager_password)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText(login.password)
+        }
+        layout.addView(origin)
+        layout.addView(username)
+        layout.addView(password)
+
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.private_password_manager_edit)
+            .setView(layout)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.private_password_manager_save, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    runCatching {
+                        withContext(Dispatchers.IO) {
+                            passwordManager().update(
+                                login,
+                                origin.text.toString(),
+                                username.text.toString(),
+                                password.text.toString(),
+                            )
+                        }
+                    }.fold(
+                        onSuccess = {
+                            dialog.dismiss()
+                            Toast.makeText(
+                                requireContext(),
+                                R.string.private_password_manager_updated,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            showPasswordManager()
+                        },
+                        onFailure = {
+                            password.error = getString(R.string.private_password_manager_failed)
+                        },
+                    )
+                }
+            }
+        }
+        showSensitiveDialog(dialog) { password.text.clear() }
+    }
+
+    private fun confirmPasswordDeletion(login: Login) {
+        showSensitiveDialog(
+            AlertDialog.Builder(requireContext())
+                .setTitle(login.origin)
+                .setMessage(R.string.private_password_manager_delete_confirm)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.private_password_manager_delete) { _, _ ->
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                check(passwordManager().delete(login))
+                            }
+                        }.fold(
+                            onSuccess = {
+                                Toast.makeText(
+                                    requireContext(),
+                                    R.string.private_password_manager_deleted,
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                showPasswordManager()
+                            },
+                            onFailure = { showToast(R.string.private_password_manager_failed) },
+                        )
+                    }
+                }
+                .create(),
+        )
+    }
+
+    private fun showSensitiveDialog(
+        dialog: AlertDialog,
+        onDismiss: () -> Unit = {},
+    ) {
+        sensitiveDialog?.dismiss()
+        sensitiveDialog = dialog
+        dialog.setOnDismissListener {
+            onDismiss()
+            if (sensitiveDialog === dialog) sensitiveDialog = null
+        }
+        dialog.show()
     }
 
     private fun previewCleanup(preference: Preference) {
@@ -530,6 +754,7 @@ class PrivateHistoryFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
         private const val KEY_RULE_MANAGER = "private_history_rule_manager"
         private const val KEY_RULE_TESTER = "private_history_rule_tester"
         private const val KEY_TEMPORARY_MODE = "private_history_temporary_mode"
+        private const val KEY_PASSWORD_MANAGER = "private_history_passwords"
         private const val KEY_BACKUP_EXPORT = "private_history_backup_export"
         private const val KEY_BACKUP_IMPORT = "private_history_backup_import"
         private const val KEY_BACKUP_QR_EXPORT = "private_history_backup_qr_export"

@@ -285,6 +285,9 @@ class ToolingTests(unittest.TestCase):
             / "privacyhistory"
         )
         access = (source_dir / "PrivatePasswordAccess.kt").read_text(encoding="utf-8")
+        metadata = (source_dir / "PrivatePasswordMetadata.kt").read_text(encoding="utf-8")
+        manager = (source_dir / "PrivatePasswordManager.kt").read_text(encoding="utf-8")
+        builder = (source_dir / "PrivateHistoryRuleBuilder.kt").read_text(encoding="utf-8")
         rules = (source_dir / "PrivateHistoryRules.kt").read_text(encoding="utf-8")
         authenticator = (source_dir / "PrivateHistoryAuthenticator.kt").read_text(encoding="utf-8")
         patcher = (ROOT / "scripts/apply_fenix_privacy.py").read_text(encoding="utf-8")
@@ -295,6 +298,16 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("formActionOrigin = domain", access)
         self.assertIn("fun shouldProtectLogin(uri: String)", rules)
         self.assertIn(".filter { it.protectLogin }", rules)
+        self.assertIn(
+            'private const val PREFIX = "__fenix_privacy_private_v1__:"',
+            metadata,
+        )
+        self.assertIn("fun preserveProtection", metadata)
+        self.assertIn("fun matchesOrigin", metadata)
+        self.assertIn(".filter { PrivatePasswordMetadata.matchesOrigin(it, origin) }", manager)
+        self.assertIn(".map(PrivatePasswordMetadata::forUse)", manager)
+        self.assertIn("migrateLegacyRules()", manager)
+        self.assertNotIn("private_history_builder_protect_login,", builder)
 
         self.assertIn("BIOMETRIC_STRONG", authenticator)
         self.assertNotIn("DEVICE_CREDENTIAL", authenticator)
@@ -305,6 +318,9 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("Android autofill immediate relock", patcher)
         self.assertIn("Origin-bound login picker implementation", patcher)
         self.assertIn("Fenix current-origin login unlock", patcher)
+        self.assertIn("Gecko preserve private metadata on password save", patcher)
+        self.assertIn("PrivatePasswordMetadata.matchesOrigin(login, origin)", patcher)
+        self.assertIn("PrivatePasswordMetadata::forUse", patcher)
         self.assertIn('"                        Unit\\n"', patcher)
         self.assertIn('"                            Unit\\n"', patcher)
         self.assertIn("setNegativeButtonText(activity.getString(android.R.string.cancel))", patcher)

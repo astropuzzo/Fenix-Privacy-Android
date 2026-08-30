@@ -39,7 +39,7 @@ The release index reports Android, Mozilla XPI and Windows Authenticode signatur
 - Device-local privacy counter: aggregate totals for pre-write blocks, title/search scrubs and startup/Sync cleanup. URLs, titles, queries and rules are never stored in the counter.
 - Dashboard: aggregate today/week/total/collapse counters, milestones, live shield state and an optional Android Quick Settings tile.
 - **Cookies and logins stay saved by default.** Site data, sessions, cache, downloads and tabs are untouched unless an optional action is explicitly enabled on one visual rule.
-- **Android password privacy tier (preview):** an explicit visual-rule flag hides matching credentials from ordinary lists and exposes only current-site results after a fresh strong biometric; a discreet long-press on the same neutral unlock action selects the protected tier.
+- **Synced Android private-password tier:** each credential can be marked private independently, stays out of ordinary lists and Android Autofill, and is released only for the current site after a fresh strong biometric. Its privacy marker travels inside the same encrypted Firefox Password Sync record, so reinstall and device replacement restore both together.
 - AES-256-GCM `.fprules` bundles and local encrypted QR transfer move rules between Android and Desktop without including history, counters or the passphrase; Desktop can also push/pull the encrypted bundle through Firefox Sync.
 - Fresh class-3/strong biometric protection for the Android rule screen and password access; the device PIN is not accepted.
 - Automatic and on-demand privacy integrity self-tests after Mozilla updates.
@@ -50,9 +50,11 @@ The release index reports Android, Mozilla XPI and Windows Authenticode signatur
 - Stable-upstream CI: tracks Firefox stable release tags, not Nightly commits.
 
 See [Privacy Studio 3.0](docs/PRIVACY_STUDIO_V3.md) for feature parity, matcher semantics and privacy guarantees.
-See [Password privacy tiers](docs/PASSWORD_PRIVACY.md) for the Android flow, threat model and the explicit Desktop/rule-sync limits of the preview.
+See [Password privacy tiers](docs/PASSWORD_PRIVACY.md) for setup, daily use, recovery, migration, threat model and the explicit native-Desktop limit.
 
 ## Firefox Desktop (Windows, macOS and Linux)
+
+Password privacy is enforced by the native Android build. The Desktop deliverable below is a WebExtension for selective-history protection; Firefox does not expose native saved passwords or `about:logins` filtering to WebExtensions. It therefore does not claim to hide synchronized private credentials on Desktop. A separately maintained privileged Firefox Desktop build is required for that guarantee.
 
 This repository also contains **Fenix Privacy Desktop**, a Firefox WebExtension under [`desktop/firefox-extension`](desktop/firefox-extension). It mirrors the selective-history behavior on Firefox for Windows, macOS and Linux:
 

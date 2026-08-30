@@ -69,11 +69,6 @@ class PrivateHistoryRuleBuilder(
             existing?.clearDownloads ?: false,
         )
         val closeTab = checkbox(R.string.private_history_builder_close_tab, existing?.closeTab ?: false)
-        val protectLogin = checkbox(
-            R.string.private_history_builder_protect_login,
-            existing?.protectLogin ?: false,
-        )
-
         listOf(
             label(R.string.private_history_builder_name), name,
             label(R.string.private_history_builder_profile), profile,
@@ -86,7 +81,7 @@ class PrivateHistoryRuleBuilder(
             label(R.string.private_history_builder_expiry), expiryMinutes,
             enabled,
             label(R.string.private_history_builder_optional_actions),
-            protectLogin, clearCookies, clearCache, clearDownloads, closeTab,
+            clearCookies, clearCache, clearDownloads, closeTab,
         ).forEach(layout::addView)
 
         fun refreshConditionalFields() {
@@ -147,7 +142,8 @@ class PrivateHistoryRuleBuilder(
                     clearCache = clearCache.isChecked,
                     clearDownloads = clearDownloads.isChecked,
                     closeTab = closeTab.isChecked,
-                    protectLogin = protectLogin.isChecked,
+                    // Kept only until the one-time migration moves preview flags into Sync records.
+                    protectLogin = existing?.protectLogin ?: false,
                 )
                 rules.addOrReplaceRule(next)
                 onSaved()
